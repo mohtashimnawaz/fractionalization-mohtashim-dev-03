@@ -99,6 +99,7 @@ async function mintWithExistingTree(
   // Create UMI with wallet adapter identity
   const umi = createUmi(endpoint)
     .use(mplBubblegum())
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .use(walletAdapterIdentity(walletAdapter as any));
 
   console.log('Using existing Merkle tree:', treeAddress);
