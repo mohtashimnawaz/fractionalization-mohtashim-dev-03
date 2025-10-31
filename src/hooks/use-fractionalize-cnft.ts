@@ -103,22 +103,15 @@ export function useFractionalizeCNFT() {
         throw new Error('NEXT_PUBLIC_FRACTIONALIZATION_PROGRAM_ID not configured');
       }
 
-      const heliusApiKey = process.env.NEXT_PUBLIC_HELIUS_API_KEY;
-      if (!heliusApiKey) {
-        throw new Error('NEXT_PUBLIC_HELIUS_API_KEY not configured');
-      }
-
       console.log('🎯 Starting fractionalization...', params);
 
-      // Fetch asset and proof data using direct Helius RPC calls
+      // Fetch asset and proof data using Helius RPC proxy
       console.log('📡 Fetching asset with proof via Helius...', { assetId: params.assetId });
       
       try {
-        const heliusRpcUrl = `https://devnet.helius-rpc.com/?api-key=${heliusApiKey}`;
-        
-        // Fetch asset proof via Helius RPC
+        // Fetch asset proof via Helius RPC proxy
         console.log('📡 Calling Helius getAssetProof...');
-        const proofResponse = await fetch(heliusRpcUrl, {
+        const proofResponse = await fetch('/api/helius-rpc', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -137,9 +130,9 @@ export function useFractionalizeCNFT() {
         const assetProofData = proofResult.result;
         console.log('✅ Got asset proof:', assetProofData);
         
-        // Fetch asset data via Helius RPC
+        // Fetch asset data via Helius RPC proxy
         console.log('📡 Calling Helius getAsset...');
-        const assetResponse = await fetch(heliusRpcUrl, {
+        const assetResponse = await fetch('/api/helius-rpc', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

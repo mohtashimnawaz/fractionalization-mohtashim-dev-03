@@ -50,7 +50,7 @@ async function checkSetup() {
       const keypairData = JSON.parse(fs.readFileSync(walletPath, 'utf-8'));
       const publicKey = new PublicKey(keypairData.slice(32, 64));
       
-      const apiKey = process.env.NEXT_PUBLIC_HELIUS_API_KEY;
+      const apiKey = process.env.HELIUS_API_KEY;
       const endpoint = apiKey 
         ? `https://devnet.helius-rpc.com/?api-key=${apiKey}`
         : 'https://api.devnet.solana.com';
@@ -80,7 +80,7 @@ async function checkSetup() {
   console.log('');
 
   // Check 3: Helius API key
-  const heliusKey = process.env.NEXT_PUBLIC_HELIUS_API_KEY;
+  const heliusKey = process.env.HELIUS_API_KEY;
   if (heliusKey && heliusKey.length > 20) {
     checks.helius = true;
     console.log('✅ Helius API key configured');

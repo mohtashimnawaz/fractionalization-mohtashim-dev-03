@@ -11,7 +11,7 @@
  * 
  * You MUST:
  * 1. Create a real cNFT on Solana devnet
- * 2. Add NEXT_PUBLIC_HELIUS_API_KEY to .env.local
+ * 2. Add HELIUS_API_KEY to .env
  * 3. Connect wallet that owns the cNFT
  * 
  * See CNFT_SETUP.md for instructions.
@@ -20,12 +20,12 @@
 import { PublicKey } from '@solana/web3.js';
 
 // Helius API configuration
-const HELIUS_API_KEY = process.env.NEXT_PUBLIC_HELIUS_API_KEY || '';
+const HELIUS_API_KEY = process.env.HELIUS_API_KEY || '';
 const HELIUS_RPC_URL = `https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 
 if (!HELIUS_API_KEY) {
   console.warn(
-    '⚠️ NEXT_PUBLIC_HELIUS_API_KEY not set. Please add it to .env.local'
+    '⚠️ HELIUS_API_KEY not set. Please add it to .env'
   );
 } else {
   console.log('✅ Helius API key loaded:', HELIUS_API_KEY.substring(0, 8) + '...' + HELIUS_API_KEY.substring(HELIUS_API_KEY.length - 4));
@@ -141,7 +141,7 @@ export interface CompressedNFT {
 async function callDASApi<T>(method: string, params: unknown): Promise<T> {
   if (!HELIUS_API_KEY) {
     throw new Error(
-      'Helius API key not configured. Please add NEXT_PUBLIC_HELIUS_API_KEY to .env.local'
+      'Helius API key not configured. Please add HELIUS_API_KEY to .env'
     );
   }
 

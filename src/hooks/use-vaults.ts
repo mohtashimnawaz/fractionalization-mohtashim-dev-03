@@ -22,13 +22,9 @@ const fetchVaults = async (rpcConnection: any, _walletPubkey?: PublicKey): Promi
 
     console.log('🔍 Fetching vaults from program:', programId);
 
-    // Create a proper Connection object for getProgramAccounts
-    // The gill RPC doesn't have the same API as web3.js Connection
-    const heliusApiKey = process.env.NEXT_PUBLIC_HELIUS_API_KEY;
-    const network = process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet';
-    const endpoint = heliusApiKey 
-      ? `https://${network}.helius-rpc.com/?api-key=${heliusApiKey}`
-      : 'https://api.devnet.solana.com';
+    // Get RPC endpoint from API route (keeps API key secure)
+    const endpointResponse = await fetch('/api/rpc-endpoint');
+    const { endpoint } = await endpointResponse.json();
     const connection = new anchor.web3.Connection(endpoint, 'confirmed');
 
     // Get all vault accounts from the program
@@ -161,10 +157,8 @@ const fetchVaults = async (rpcConnection: any, _walletPubkey?: PublicKey): Promi
     const vaultsWithMetadata = await Promise.all(
       vaults.map(async (vault) => {
         try {
-          // Fetch cNFT metadata from Helius
-          const heliusUrl = `https://devnet.helius-rpc.com/?api-key=${process.env.NEXT_PUBLIC_HELIUS_API_KEY}`;
-
-          const response = await fetch(heliusUrl, {
+          // Fetch cNFT metadata from Helius via API proxy
+          const response = await fetch('/api/helius-rpc', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

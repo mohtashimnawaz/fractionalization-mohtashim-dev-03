@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
@@ -17,17 +17,20 @@ interface WalletAdapterProviderProps {
  * Provides wallet connection and transaction signing capabilities
  */
 export function WalletAdapterProvider({ children }: WalletAdapterProviderProps) {
-  // Get Helius RPC endpoint from environment
-  const endpoint = useMemo(() => {
-    const apiKey = process.env.NEXT_PUBLIC_HELIUS_API_KEY;
-    const network = process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet';
-    
-    if (apiKey) {
-      return `https://${network}.helius-rpc.com/?api-key=${apiKey}`;
-    }
-    
-    // Fallback to public devnet
-    return 'https://api.devnet.solana.com';
+  // Fetch RPC endpoint from API route (keeps API key secure)
+  const [endpoint, setEndpoint] = useState('https://api.devnet.solana.com');
+
+  useEffect(() => {
+    fetch('/api/rpc-endpoint')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.endpoint) {
+          setEndpoint(data.endpoint);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to fetch RPC endpoint:', err);
+      });
   }, []);
 
   // Configure wallet adapters

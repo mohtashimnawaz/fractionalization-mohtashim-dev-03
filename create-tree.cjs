@@ -36,7 +36,7 @@ async function createTree() {
     console.log('');
 
     // Connect to devnet with Helius if available
-    const apiKey = process.env.NEXT_PUBLIC_HELIUS_API_KEY;
+    const apiKey = process.env.HELIUS_API_KEY;
     const endpoint = apiKey 
       ? `https://devnet.helius-rpc.com/?api-key=${apiKey}`
       : 'https://api.devnet.solana.com';

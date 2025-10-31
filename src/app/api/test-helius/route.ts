@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 export async function GET() {
-  const apiKey = process.env.NEXT_PUBLIC_HELIUS_API_KEY;
+  const apiKey = process.env.HELIUS_API_KEY;
   const treeAddress = process.env.NEXT_PUBLIC_MERKLE_TREE_ADDRESS;
   
   return NextResponse.json({

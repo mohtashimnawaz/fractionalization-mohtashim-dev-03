@@ -76,12 +76,9 @@ async function mintWithExistingTree(
     throw new Error('NEXT_PUBLIC_MERKLE_TREE_ADDRESS not configured. See TREE_SETUP_GUIDE.md');
   }
 
-  // Initialize UMI with Helius RPC
-  const apiKey = process.env.NEXT_PUBLIC_HELIUS_API_KEY;
-  const network = process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet';
-  const endpoint = apiKey 
-    ? `https://${network}.helius-rpc.com/?api-key=${apiKey}`
-    : 'https://api.devnet.solana.com';
+  // Get RPC endpoint from API route (keeps API key secure)
+  const endpointResponse = await fetch('/api/rpc-endpoint');
+  const { endpoint } = await endpointResponse.json();
 
   // Create wallet adapter compatible object for UMI
   const { PublicKey: Web3PublicKey } = await import('@solana/web3.js');
@@ -155,14 +152,8 @@ async function mintWithHeliusAPI(
   walletAddress: string,
 ): Promise<{ signature: string; assetId: string }> {
   
-  const apiKey = process.env.NEXT_PUBLIC_HELIUS_API_KEY;
-  const network = process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet';
-  
-  if (!apiKey) {
-    throw new Error('Helius API key not configured');
-  }
-
-  const response = await fetch(`https://${network}.helius-rpc.com/?api-key=${apiKey}`, {
+  // Use API proxy to keep API key secure
+  const response = await fetch('/api/helius-rpc', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

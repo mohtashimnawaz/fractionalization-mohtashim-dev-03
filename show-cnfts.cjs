@@ -1,8 +1,14 @@
 const { Connection, PublicKey } = require('@solana/web3.js');
+require('dotenv').config();
 
-const HELIUS_API_KEY = 'e8d45907-aaf1-4837-9bcd-b3652dcdaeb6';
+const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
 const HELIUS_RPC_URL = `https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 const WALLET_ADDRESS = '6xX9G1jy4quapnew9CpHd1rz3pWKgysM2Q4MMBkmQMxN';
+
+if (!HELIUS_API_KEY) {
+  console.error('❌ HELIUS_API_KEY not found in .env file');
+  process.exit(1);
+}
 
 async function getAssetsByOwner(ownerAddress) {
   const response = await fetch(HELIUS_RPC_URL, {
