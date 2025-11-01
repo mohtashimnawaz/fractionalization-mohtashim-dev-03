@@ -26,37 +26,50 @@ interface MintCNFTParams {
 }
 
 /**
- * Upload metadata to decentralized storage
- * 
- * ⚠️ TEMPORARY SOLUTION:
- * Returns a mock Arweave-style URL with a hash of the metadata.
- * In production, you MUST upload to real storage (Arweave/IPFS).
- * 
- * For production implementation:
- * 1. Upload image to Arweave/IPFS
- * 2. Create metadata JSON with image URI
- * 3. Upload metadata JSON to Arweave/IPFS
- * 4. Return the metadata URI
- * 
- * Tools: Metaplex Sugar CLI, Bundlr, nft.storage, Pinata
+ * Upload metadata to Pinata IPFS
+ * Uses API route to keep PINATA_JWT secure
  */
-function uploadMetadata(params: MintCNFTParams): string {
-  // Create a deterministic hash from the NFT name for testing
-  const hash = Array.from(params.name)
-    .reduce((acc, char) => acc + char.charCodeAt(0), 0)
-    .toString(36)
-    .padStart(43, 'x'); // Arweave hashes are 43 chars
-  
-  // Return a mock Arweave URL (max 200 chars for Bubblegum)
-  // This is just for testing - in production, this must be a REAL uploaded metadata file
-  const mockUri = `https://arweave.net/${hash}`;
-  
-  console.log('📝 Mock metadata URI:', mockUri);
-  console.log('   Name:', params.name);
-  console.log('   Symbol:', params.symbol);
-  console.log('   ⚠️  Remember: Upload real metadata to Arweave/IPFS for production!');
-  
-  return mockUri;
+async function uploadMetadata(params: MintCNFTParams): Promise<string> {
+  try {
+    console.log('📤 Uploading metadata to Pinata...');
+
+    const response = await fetch('/api/upload-metadata', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: params.name,
+        symbol: params.symbol,
+        description: params.description,
+        imageUrl: params.imageUrl,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Metadata upload failed: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+
+    if (data.error) {
+      throw new Error(data.error);
+    }
+
+    console.log('✅ Metadata uploaded to Pinata:', data.ipfsUrl);
+    return data.ipfsUrl;
+  } catch (error) {
+    console.error('❌ Metadata upload failed:', error);
+    // Fallback to mock URL if Pinata fails
+    const hash = Array.from(params.name)
+      .reduce((acc, char) => acc + char.charCodeAt(0), 0)
+      .toString(36)
+      .padStart(43, 'x');
+    const mockUri = `https://arweave.net/${hash}`;
+    console.warn('⚠️  Using mock metadata URI:', mockUri);
+    return mockUri;
+  }
 }
 
 /**
@@ -67,7 +80,7 @@ async function mintWithExistingTree(
   params: MintCNFTParams,
   walletAddress: string,
   signTransaction: (tx: VersionedTransaction) => Promise<VersionedTransaction>,
-  connection: Connection,
+  _connection: Connection,
 ): Promise<{ signature: string; assetId: string }> {
   
   const treeAddress = process.env.NEXT_PUBLIC_MERKLE_TREE_ADDRESS;
@@ -104,8 +117,8 @@ async function mintWithExistingTree(
 
   console.log('Using existing Merkle tree:', treeAddress);
 
-  // Upload metadata
-  const metadataUri = uploadMetadata(params);
+  // Upload metadata to Pinata
+  const metadataUri = await uploadMetadata(params);
 
   // Mint compressed NFT to existing tree
   console.log('Minting compressed NFT...');

@@ -6,7 +6,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useUserCNFTs, useMintCNFT } from '@/hooks';
+import { useUserCNFTs } from '@/hooks/useFractionalize';
+import { useMintCNFT } from '@/hooks';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useFractionalizationStore } from '@/stores';
 import { FractionalizationStep } from '@/types';
@@ -19,9 +20,19 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Loader2, RefreshCw, Plus } from 'lucide-react';
 import Image from 'next/image';
 
+const CNFTS_PER_PAGE = 10;
+
 export function SelectNFTStep() {
   const { publicKey } = useWallet();
-  const { data: nfts, isLoading, error, refetch } = useUserCNFTs(publicKey?.toBase58());
+  const [limit, setLimit] = useState(CNFTS_PER_PAGE);
+  const { data, isLoading, error, refetch } = useUserCNFTs(
+    publicKey?.toBase58(),
+    limit,
+    0 // Always start from offset 0
+  );
+
+  const nfts = data?.cnfts || [];
+  const total = data?.total || 0;
   const { formData, updateFormData, setStep } = useFractionalizationStore();
   const mintCNFT = useMintCNFT();
   
@@ -95,6 +106,12 @@ export function SelectNFTStep() {
       </div>
     );
   }
+
+  const hasMore = limit < total;
+
+  const handleLoadMore = () => {
+    setLimit((prev) => prev + CNFTS_PER_PAGE);
+  };
 
   if (!nfts || nfts.length === 0) {
     return (
@@ -228,10 +245,16 @@ export function SelectNFTStep() {
           <p className="text-sm text-muted-foreground">
             Select a compressed NFT from your wallet to fractionalize
           </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Showing {nfts.length} of {total} cNFTs
+          </p>
         </div>
         <div className="flex gap-2">
           <Button 
-            onClick={() => refetch()} 
+            onClick={() => {
+              setLimit(CNFTS_PER_PAGE); // Reset limit on refresh
+              refetch();
+            }} 
             variant="outline" 
             size="sm"
             disabled={isLoading}
@@ -319,10 +342,6 @@ export function SelectNFTStep() {
               </div>
             </DialogContent>
           </Dialog>
-          <Button onClick={() => refetch()} variant="ghost" size="sm">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
         </div>
       </div>
       
@@ -365,6 +384,27 @@ export function SelectNFTStep() {
           </Card>
         ))}
       </div>
+
+      {/* Load More Button */}
+      {hasMore && (
+        <div className="flex justify-center pt-4">
+          <Button
+            onClick={handleLoadMore}
+            variant="outline"
+            disabled={isLoading}
+            size="lg"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Loading...
+              </>
+            ) : (
+              'Load More'
+            )}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

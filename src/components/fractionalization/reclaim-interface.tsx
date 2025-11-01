@@ -17,11 +17,12 @@ const RECLAIM_THRESHOLD = 0.8; // 80% threshold
 
 export function ReclaimInterface({ initialVaultId }: { initialVaultId?: string } = {}) {
   const { account } = useWallet();
-  const { data: vaults, isLoading: vaultsLoading } = useVaults();
+  const { data, isLoading: vaultsLoading } = useVaults();
   const { mutate: reclaim, isPending } = useReclaim();
   const [selectedVaultId, setSelectedVaultId] = useState<string>(initialVaultId || '');
 
-  const selectedVault = vaults?.find((v) => v.id === selectedVaultId);
+  const vaults = data?.vaults || [];
+  const selectedVault = vaults.find((v) => v.id === selectedVaultId);
   const { data: balance } = useUserBalance(
     account?.address,
     selectedVault?.fractionalMint
@@ -69,7 +70,7 @@ export function ReclaimInterface({ initialVaultId }: { initialVaultId?: string }
     );
   }
 
-  const activeVaults = vaults?.filter(
+  const activeVaults = vaults.filter(
     (v) => v.status === VaultStatus.Active || v.status === VaultStatus.Redeemable
   );
 

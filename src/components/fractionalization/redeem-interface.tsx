@@ -17,12 +17,13 @@ import { VaultStatus } from '@/types';
 
 export function RedeemInterface({ initialVaultId }: { initialVaultId?: string } = {}) {
   const { account } = useWallet();
-  const { data: vaults, isLoading: vaultsLoading } = useVaults();
+  const { data, isLoading: vaultsLoading } = useVaults();
   const { mutate: redeem, isPending } = useRedeem();
   const [selectedVaultId, setSelectedVaultId] = useState<string>(initialVaultId || '');
   const [amount, setAmount] = useState<string>('');
 
-  const selectedVault = vaults?.find((v) => v.id === selectedVaultId);
+  const vaults = data?.vaults || [];
+  const selectedVault = vaults.find((v) => v.id === selectedVaultId);
   const { data: balance } = useUserBalance(
     account?.address,
     selectedVault?.fractionalMint
@@ -68,7 +69,7 @@ export function RedeemInterface({ initialVaultId }: { initialVaultId?: string } 
     );
   }
 
-  const redeemableVaults = vaults?.filter(
+  const redeemableVaults = vaults.filter(
     (v) => v.status === VaultStatus.Active || v.status === VaultStatus.Redeemable
   );
 
