@@ -327,9 +327,10 @@ export function useFractionalizeCNFT() {
         console.log('✅ Got asset data');
 
         // Extract metadata from cNFT
+        // Keep strings short to stay under 1232 byte transaction limit
         const MAX_NAME_LENGTH = 32;
         const MAX_SYMBOL_LENGTH = 10;
-        const MAX_URI_LENGTH = 200;
+        const MAX_URI_LENGTH = 100; // Reduced from 200 to save ~100 bytes
 
         const cNftName = (assetData.content?.metadata?.name || 'Unknown NFT').slice(
           0,
@@ -436,11 +437,15 @@ export function useFractionalizeCNFT() {
         console.log('🔧 Building fractionalize instruction');
 
         // Build proof accounts
+        // With canopy depth 8, we need maxDepth - canopyDepth = 14 - 8 = 6 proof nodes minimum
+        // Reduced URI length to 100 chars to stay under 1232 byte transaction limit
         const maxProofNodes = 6;
         const limitedProof = assetWithProof.proof.slice(
           0,
           Math.min(maxProofNodes, assetWithProof.proof.length)
         );
+        
+        console.log('🌳 Using', limitedProof.length, 'proof nodes (max:', maxProofNodes, ')');
 
         const proofAccounts: AccountMeta[] = limitedProof.map((node: string) => ({
           pubkey: new PublicKey(node),
