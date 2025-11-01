@@ -327,11 +327,9 @@ export function useFractionalizeCNFT() {
         console.log('✅ Got asset data');
 
         // Extract metadata from cNFT
-        // Keep strings short to stay under 1232 byte transaction limit
-        // Transaction was 1240 bytes with URI=100, need to reduce by 8+ bytes
-        const MAX_NAME_LENGTH = 24; // Reduced from 32 (saves 8 bytes)
-        const MAX_SYMBOL_LENGTH = 8;  // Reduced from 10 (saves 2 bytes)
-        const MAX_URI_LENGTH = 80;    // Reduced from 100 (saves 20 bytes)
+        const MAX_NAME_LENGTH = 32;
+        const MAX_SYMBOL_LENGTH = 10;
+        const MAX_URI_LENGTH = 200;
 
         const cNftName = (assetData.content?.metadata?.name || 'Unknown NFT').slice(
           0,
@@ -342,12 +340,6 @@ export function useFractionalizeCNFT() {
           MAX_SYMBOL_LENGTH
         );
         const cNftUri = (assetData.content?.json_uri || '').slice(0, MAX_URI_LENGTH);
-
-        console.log('📝 Metadata lengths:', {
-          name: cNftName.length,
-          symbol: cNftSymbol.length,
-          uri: cNftUri.length,
-        });
 
         if (!assetProofData.proof || assetProofData.proof.length === 0) {
           throw new Error('No merkle proof available for this cNFT');
@@ -444,16 +436,11 @@ export function useFractionalizeCNFT() {
         console.log('🔧 Building fractionalize instruction');
 
         // Build proof accounts
-        // Using 5 proof nodes as a balance between transaction size and proof validity
-        // 5 nodes = 160 bytes (vs 6 nodes = 192 bytes, saves 32 bytes)
-        // Works with canopy depth 9 (maxDepth 14 - 5 = 9)
-        const maxProofNodes = 5;
+        const maxProofNodes = 6;
         const limitedProof = assetWithProof.proof.slice(
           0,
           Math.min(maxProofNodes, assetWithProof.proof.length)
         );
-        
-        console.log('🌳 Using', limitedProof.length, 'proof nodes (max:', maxProofNodes, ')');
 
         const proofAccounts: AccountMeta[] = limitedProof.map((node: string) => ({
           pubkey: new PublicKey(node),
