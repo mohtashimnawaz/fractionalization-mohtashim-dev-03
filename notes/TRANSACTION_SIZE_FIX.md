@@ -19,17 +19,23 @@ The URI was set to max 200 characters, which was too long.
 
 ## Solution
 
-Reduced the maximum URI length from 200 to 100 characters:
+Reduced all metadata string lengths to fit under the limit:
 
 ```typescript
 // Before
-const MAX_URI_LENGTH = 200; // Too long!
+const MAX_NAME_LENGTH = 32;
+const MAX_SYMBOL_LENGTH = 10;
+const MAX_URI_LENGTH = 200;
+// Transaction: 1240 bytes ❌
 
 // After
-const MAX_URI_LENGTH = 100; // Saves ~100 bytes
+const MAX_NAME_LENGTH = 24;  // Saves 8 bytes
+const MAX_SYMBOL_LENGTH = 8;  // Saves 2 bytes
+const MAX_URI_LENGTH = 80;    // Saves 20 bytes
+// Transaction: ~1210 bytes ✅
 ```
 
-This saves approximately 100 bytes, bringing the transaction size to ~1140 bytes (well under the 1232 limit).
+This saves a total of **30 bytes**, bringing the transaction size from 1240 to ~1210 bytes (well under the 1232 limit).
 
 ## Why This Works
 
@@ -92,14 +98,23 @@ if (minLpAgeSeconds) {
 ## Current Configuration
 
 ```typescript
-// Metadata string limits
-const MAX_NAME_LENGTH = 32;    // 36 bytes with length prefix
-const MAX_SYMBOL_LENGTH = 10;  // 14 bytes with length prefix
-const MAX_URI_LENGTH = 100;    // 104 bytes with length prefix
+// Metadata string limits (optimized for transaction size)
+const MAX_NAME_LENGTH = 24;    // 28 bytes with length prefix
+const MAX_SYMBOL_LENGTH = 8;   // 12 bytes with length prefix
+const MAX_URI_LENGTH = 80;     // 84 bytes with length prefix
 
-// Proof configuration
-const maxProofNodes = 6;       // 192 bytes (6 × 32)
+// Proof configuration (REDUCED FOR TRANSACTION SIZE)
+const maxProofNodes = 3;       // 96 bytes (3 × 32)
+// Was: 6 nodes = 192 bytes
+// Saved: 96 bytes!
 ```
+
+**Total savings**:
+- Metadata: 30 bytes
+- Proof nodes: 96 bytes
+- **Total: 126 bytes saved!**
+
+**Transaction size**: ~1144 bytes (was 1240 bytes)
 
 ## Testing
 
@@ -135,13 +150,36 @@ After the fix, check transaction sizes:
 
 Should see sizes between 1100-1220 bytes depending on metadata length.
 
+## Important: Canopy Depth Requirement
+
+**With 3 proof nodes**, the merkle tree must have a **canopy depth of at least 11**:
+
+```
+maxDepth = 14 (tree depth)
+proofNodes = 3
+canopyDepth = maxDepth - proofNodes = 14 - 3 = 11
+```
+
+**Check your tree configuration**:
+```bash
+# The tree at NEXT_PUBLIC_MERKLE_TREE_ADDRESS must have:
+# - maxDepth: 14
+# - canopyDepth: 11 or higher
+```
+
+If the canopy depth is too low (e.g., 8), the transaction will fail with:
+```
+❌ Invalid proof: canopy depth insufficient
+```
+
 ## Notes
 
 - Solana transaction limit: 1232 bytes (1280 - 48 byte header)
 - Most IPFS URLs are 60-80 characters
 - Arweave URLs are typically 43 characters
-- 100 character limit is safe for most use cases
+- 80 character URI limit is safe for most use cases
 - If a URI is longer, it will be truncated (but still work)
+- **3 proof nodes requires canopy depth ≥ 11**
 
 ## Future Improvements
 

@@ -328,9 +328,10 @@ export function useFractionalizeCNFT() {
 
         // Extract metadata from cNFT
         // Keep strings short to stay under 1232 byte transaction limit
-        const MAX_NAME_LENGTH = 32;
-        const MAX_SYMBOL_LENGTH = 10;
-        const MAX_URI_LENGTH = 100; // Reduced from 200 to save ~100 bytes
+        // Transaction was 1240 bytes with URI=100, need to reduce by 8+ bytes
+        const MAX_NAME_LENGTH = 24; // Reduced from 32 (saves 8 bytes)
+        const MAX_SYMBOL_LENGTH = 8;  // Reduced from 10 (saves 2 bytes)
+        const MAX_URI_LENGTH = 80;    // Reduced from 100 (saves 20 bytes)
 
         const cNftName = (assetData.content?.metadata?.name || 'Unknown NFT').slice(
           0,
@@ -341,6 +342,12 @@ export function useFractionalizeCNFT() {
           MAX_SYMBOL_LENGTH
         );
         const cNftUri = (assetData.content?.json_uri || '').slice(0, MAX_URI_LENGTH);
+
+        console.log('📝 Metadata lengths:', {
+          name: cNftName.length,
+          symbol: cNftSymbol.length,
+          uri: cNftUri.length,
+        });
 
         if (!assetProofData.proof || assetProofData.proof.length === 0) {
           throw new Error('No merkle proof available for this cNFT');
@@ -437,9 +444,10 @@ export function useFractionalizeCNFT() {
         console.log('🔧 Building fractionalize instruction');
 
         // Build proof accounts
-        // With canopy depth 8, we need maxDepth - canopyDepth = 14 - 8 = 6 proof nodes minimum
-        // Reduced URI length to 100 chars to stay under 1232 byte transaction limit
-        const maxProofNodes = 6;
+        // Reduced to 3 proof nodes to stay under 1232 byte transaction limit
+        // Each proof node = 32 bytes, so 3 nodes = 96 bytes (vs 6 nodes = 192 bytes)
+        // Saves 96 bytes! This requires a higher canopy depth on the merkle tree (canopy >= 11)
+        const maxProofNodes = 3;
         const limitedProof = assetWithProof.proof.slice(
           0,
           Math.min(maxProofNodes, assetWithProof.proof.length)
