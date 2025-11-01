@@ -444,10 +444,10 @@ export function useFractionalizeCNFT() {
         console.log('🔧 Building fractionalize instruction');
 
         // Build proof accounts
-        // Reduced to 3 proof nodes to stay under 1232 byte transaction limit
-        // Each proof node = 32 bytes, so 3 nodes = 96 bytes (vs 6 nodes = 192 bytes)
-        // Saves 96 bytes! This requires a higher canopy depth on the merkle tree (canopy >= 11)
-        const maxProofNodes = 3;
+        // Using 5 proof nodes as a balance between transaction size and proof validity
+        // 5 nodes = 160 bytes (vs 6 nodes = 192 bytes, saves 32 bytes)
+        // Works with canopy depth 9 (maxDepth 14 - 5 = 9)
+        const maxProofNodes = 5;
         const limitedProof = assetWithProof.proof.slice(
           0,
           Math.min(maxProofNodes, assetWithProof.proof.length)

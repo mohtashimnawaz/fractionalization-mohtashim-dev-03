@@ -103,18 +103,18 @@ const MAX_NAME_LENGTH = 24;    // 28 bytes with length prefix
 const MAX_SYMBOL_LENGTH = 8;   // 12 bytes with length prefix
 const MAX_URI_LENGTH = 80;     // 84 bytes with length prefix
 
-// Proof configuration (REDUCED FOR TRANSACTION SIZE)
-const maxProofNodes = 3;       // 96 bytes (3 × 32)
+// Proof configuration (OPTIMIZED FOR TRANSACTION SIZE)
+const maxProofNodes = 5;       // 160 bytes (5 × 32)
 // Was: 6 nodes = 192 bytes
-// Saved: 96 bytes!
+// Saved: 32 bytes!
 ```
 
 **Total savings**:
 - Metadata: 30 bytes
-- Proof nodes: 96 bytes
-- **Total: 126 bytes saved!**
+- Proof nodes: 32 bytes (6 → 5 nodes)
+- **Total: 62 bytes saved!**
 
-**Transaction size**: ~1144 bytes (was 1240 bytes)
+**Transaction size**: ~1171 bytes (was 1240 bytes, under 1232 limit ✅)
 
 ## Testing
 
@@ -152,24 +152,29 @@ Should see sizes between 1100-1220 bytes depending on metadata length.
 
 ## Important: Canopy Depth Requirement
 
-**With 3 proof nodes**, the merkle tree must have a **canopy depth of at least 11**:
+**With 5 proof nodes**, the merkle tree must have a **canopy depth of at least 9**:
 
 ```
 maxDepth = 14 (tree depth)
-proofNodes = 3
-canopyDepth = maxDepth - proofNodes = 14 - 3 = 11
+proofNodes = 5
+canopyDepth = maxDepth - proofNodes = 14 - 5 = 9
 ```
+
+**Why 5 nodes?**
+- 3 nodes: Transaction too small, proof validation fails (needs canopy 11)
+- 6 nodes: Transaction too large (1240 bytes > 1232 limit)
+- **5 nodes**: Perfect balance! (1171 bytes, works with canopy 9)
 
 **Check your tree configuration**:
 ```bash
 # The tree at NEXT_PUBLIC_MERKLE_TREE_ADDRESS must have:
 # - maxDepth: 14
-# - canopyDepth: 11 or higher
+# - canopyDepth: 9 or higher
 ```
 
-If the canopy depth is too low (e.g., 8), the transaction will fail with:
+If the canopy depth is too low, the transaction will fail with:
 ```
-❌ Invalid proof: canopy depth insufficient
+❌ Error: Invalid root recomputed from proof
 ```
 
 ## Notes
@@ -179,7 +184,7 @@ If the canopy depth is too low (e.g., 8), the transaction will fail with:
 - Arweave URLs are typically 43 characters
 - 80 character URI limit is safe for most use cases
 - If a URI is longer, it will be truncated (but still work)
-- **3 proof nodes requires canopy depth ≥ 11**
+- **5 proof nodes requires canopy depth ≥ 9**
 
 ## Future Improvements
 
