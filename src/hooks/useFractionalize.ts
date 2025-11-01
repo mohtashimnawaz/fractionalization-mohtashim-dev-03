@@ -538,20 +538,16 @@ export function useFractionalizeCNFT() {
         // Get recent blockhash
         const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
 
-        // Add compute budget instructions
+        // Add compute budget instructions (minimal to save transaction size)
         const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
           units: 400_000,
-        });
-
-        const computePriceIx = ComputeBudgetProgram.setComputeUnitPrice({
-          microLamports: 1,
         });
 
         // Build versioned transaction
         const messageV0 = new TransactionMessage({
           payerKey: walletPublicKey,
           recentBlockhash: blockhash,
-          instructions: [computeBudgetIx, computePriceIx, fractionalizeIx],
+          instructions: [computeBudgetIx, fractionalizeIx],
         }).compileToV0Message();
 
         const versionedTx = new VersionedTransaction(messageV0);

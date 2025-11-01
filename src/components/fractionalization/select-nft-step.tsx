@@ -20,15 +20,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Loader2, RefreshCw, Plus } from 'lucide-react';
 import Image from 'next/image';
 
-const CNFTS_PER_PAGE = 10;
-
 export function SelectNFTStep() {
   const { publicKey } = useWallet();
-  const [limit, setLimit] = useState(CNFTS_PER_PAGE);
   const { data, isLoading, error, refetch } = useUserCNFTs(
     publicKey?.toBase58(),
-    limit,
-    0 // Always start from offset 0
+    50, // Fixed limit - show up to 50 cNFTs
+    0
   );
 
   const nfts = data?.cnfts || [];
@@ -106,12 +103,6 @@ export function SelectNFTStep() {
       </div>
     );
   }
-
-  const hasMore = limit < total;
-
-  const handleLoadMore = () => {
-    setLimit((prev) => prev + CNFTS_PER_PAGE);
-  };
 
   if (!nfts || nfts.length === 0) {
     return (
@@ -251,10 +242,7 @@ export function SelectNFTStep() {
         </div>
         <div className="flex gap-2">
           <Button 
-            onClick={() => {
-              setLimit(CNFTS_PER_PAGE); // Reset limit on refresh
-              refetch();
-            }} 
+            onClick={() => refetch()} 
             variant="outline" 
             size="sm"
             disabled={isLoading}
@@ -384,27 +372,6 @@ export function SelectNFTStep() {
           </Card>
         ))}
       </div>
-
-      {/* Load More Button */}
-      {hasMore && (
-        <div className="flex justify-center pt-4">
-          <Button
-            onClick={handleLoadMore}
-            variant="outline"
-            disabled={isLoading}
-            size="lg"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Loading...
-              </>
-            ) : (
-              'Load More'
-            )}
-          </Button>
-        </div>
-      )}
     </div>
   );
 }
