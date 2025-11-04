@@ -41,8 +41,17 @@ export const useRedeem = () => {
   return useMutation({
     mutationFn: redeemTokens,
     onSuccess: (signature) => {
-      toast.success('Tokens redeemed successfully!', {
-        description: `Transaction: ${signature.substring(0, 20)}...`,
+      import('@/lib/explorer').then(({ getExplorerTxUrl, formatSignature }) => {
+        const explorerUrl = getExplorerTxUrl(signature);
+        const shortSig = formatSignature(signature, 8);
+        
+        toast.success('Tokens redeemed successfully!', {
+          description: `Transaction: ${shortSig}`,
+          action: {
+            label: 'View on Explorer',
+            onClick: () => window.open(explorerUrl, '_blank'),
+          },
+        });
       });
       
       queryClient.invalidateQueries({ queryKey: ['vaults'] });
@@ -65,8 +74,17 @@ export const useReclaim = () => {
   return useMutation({
     mutationFn: reclaimNFT,
     onSuccess: (signature) => {
-      toast.success('NFT reclaimed successfully!', {
-        description: `Transaction: ${signature.substring(0, 20)}...`,
+      import('@/lib/explorer').then(({ getExplorerTxUrl, formatSignature }) => {
+        const explorerUrl = getExplorerTxUrl(signature);
+        const shortSig = formatSignature(signature, 8);
+        
+        toast.success('NFT reclaimed successfully!', {
+          description: `Transaction: ${shortSig}`,
+          action: {
+            label: 'View on Explorer',
+            onClick: () => window.open(explorerUrl, '_blank'),
+          },
+        });
       });
       
       queryClient.invalidateQueries({ queryKey: ['vaults'] });

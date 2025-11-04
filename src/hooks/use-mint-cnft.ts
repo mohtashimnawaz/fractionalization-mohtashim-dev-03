@@ -152,7 +152,6 @@ async function mintWithExistingTree(
   const signature = Buffer.from(result.signature).toString('base64');
   
   console.log('✅ Transaction confirmed!');
-  console.log('🔗 View transaction:', `https://explorer.solana.com/tx/${signature}?cluster=devnet`);
   
   return { signature, assetId: 'pending-indexing' };
 }
@@ -244,17 +243,26 @@ export const useMintCNFT = () => {
       }
     },
     onSuccess: (data) => {
-      if (useExistingTree) {
-        toast.success('🎉 cNFT Minted Successfully!', {
-          description: `Transaction sent! View on Explorer: ${data.signature.substring(0, 8)}... (May take a few seconds to index)`,
-          duration: 8000,
-        });
-      } else {
-        toast.success('Compressed NFT Minted!', {
-          description: `Asset ID: ${data.assetId.substring(0, 8)}...`,
-          duration: 5000,
-        });
-      }
+      import('@/lib/explorer').then(({ getExplorerTxUrl, formatSignature }) => {
+        if (useExistingTree) {
+          const explorerUrl = getExplorerTxUrl(data.signature);
+          const shortSig = formatSignature(data.signature, 8);
+          
+          toast.success('🎉 cNFT Minted Successfully!', {
+            description: `Transaction: ${shortSig} (May take a few seconds to index)`,
+            duration: 8000,
+            action: {
+              label: 'View on Explorer',
+              onClick: () => window.open(explorerUrl, '_blank'),
+            },
+          });
+        } else {
+          toast.success('Compressed NFT Minted!', {
+            description: `Asset ID: ${data.assetId.substring(0, 8)}... (Minted via Helius API)`,
+            duration: 5000,
+          });
+        }
+      });
 
       // Wait for Helius indexing before refetching
       setTimeout(() => {

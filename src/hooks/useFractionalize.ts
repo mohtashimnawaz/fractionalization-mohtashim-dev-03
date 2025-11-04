@@ -593,10 +593,6 @@ export function useFractionalizeCNFT() {
         }
 
         console.log('✅ Transaction sent:', signature);
-        console.log(
-          '🔗 View on Explorer:',
-          `https://explorer.solana.com/tx/${signature}?cluster=devnet`
-        );
 
         // Wait for confirmation
         try {
@@ -633,10 +629,18 @@ export function useFractionalizeCNFT() {
       }
     },
     onSuccess: (data) => {
-      const explorerUrl = `https://explorer.solana.com/tx/${data.signature}?cluster=devnet`;
-      toast.success('🎉 NFT Fractionalized Successfully!', {
-        description: `Your cNFT has been fractionalized. Tx: ${data.signature.slice(0, 16)}... View on Explorer: ${explorerUrl}`,
-        duration: 10000,
+      import('@/lib/explorer').then(({ getExplorerTxUrl, formatSignature }) => {
+        const explorerUrl = getExplorerTxUrl(data.signature);
+        const shortSig = formatSignature(data.signature, 8);
+        
+        toast.success('🎉 NFT Fractionalized Successfully!', {
+          description: `Your cNFT has been fractionalized into tokens! Transaction: ${shortSig}`,
+          duration: 10000,
+          action: {
+            label: 'View on Explorer',
+            onClick: () => window.open(explorerUrl, '_blank'),
+          },
+        });
       });
 
       // Invalidate queries to refresh vault data

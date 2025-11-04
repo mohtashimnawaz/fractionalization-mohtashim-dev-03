@@ -4,6 +4,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
+import { toast } from 'sonner';
 
 // Import wallet adapter CSS
 import '@solana/wallet-adapter-react-ui/styles.css';
@@ -30,6 +31,9 @@ export function WalletAdapterProvider({ children }: WalletAdapterProviderProps) 
       })
       .catch((err) => {
         console.error('Failed to fetch RPC endpoint:', err);
+        toast.error('Connection Issue', {
+          description: 'Failed to load RPC endpoint. Using default devnet connection.',
+        });
       });
   }, []);
 
