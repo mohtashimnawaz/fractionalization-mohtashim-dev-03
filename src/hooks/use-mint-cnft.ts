@@ -17,6 +17,7 @@ import {
   none,
 } from '@metaplex-foundation/umi';
 import { walletAdapterIdentity } from '@metaplex-foundation/umi-signer-wallet-adapters';
+import bs58 from 'bs58';
 
 interface MintCNFTParams {
   name: string;
@@ -149,9 +150,11 @@ async function mintWithExistingTree(
   console.log('Sending transaction via UMI...');
   const result = await mintBuilder.sendAndConfirm(umi);
   
-  const signature = Buffer.from(result.signature).toString('base64');
+  // Convert signature from Uint8Array to base58 string (Solana format)
+  const signature = bs58.encode(result.signature);
   
   console.log('✅ Transaction confirmed!');
+  console.log('📝 Signature (base58):', signature);
   
   return { signature, assetId: 'pending-indexing' };
 }
