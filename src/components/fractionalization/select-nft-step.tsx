@@ -22,14 +22,18 @@ import Image from 'next/image';
 
 export function SelectNFTStep() {
   const { publicKey } = useWallet();
+  const [pageSize] = useState(30); // Items per page
+  const [displayLimit, setDisplayLimit] = useState(30); // How many to display
+  
   const { data, isLoading, error, refetch } = useUserCNFTs(
     publicKey?.toBase58(),
-    50, // Fixed limit - show up to 50 cNFTs
+    displayLimit, // Fetch up to display limit
     0
   );
 
   const nfts = data?.cnfts || [];
   const total = data?.total || 0;
+  const hasMore = data?.hasMore || false;
   const { formData, updateFormData, setStep } = useFractionalizationStore();
   const mintCNFT = useMintCNFT();
   
@@ -372,6 +376,30 @@ export function SelectNFTStep() {
           </Card>
         ))}
       </div>
+
+      {/* Show More Button */}
+      {hasMore && (
+        <div className="flex justify-center mt-6">
+          <Button
+            onClick={() => setDisplayLimit(prev => prev + pageSize)}
+            variant="outline"
+            size="lg"
+            disabled={isLoading}
+            className="gap-2"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading...
+              </>
+            ) : (
+              <>
+                Show More ({total - nfts.length} remaining)
+              </>
+            )}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

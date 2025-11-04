@@ -101,6 +101,7 @@ interface DASAsset {
     compressed: boolean;
     tree: string;
     leaf_id: number;
+    seq?: number;
   };
   ownership: {
     owner: string;
@@ -121,6 +122,8 @@ interface CompressedNFT {
   tree: string;
   leafId: number;
   owner: string;
+  // optional sequence number from Helius compression metadata (useful for ordering)
+  seq?: number;
 }
 
 /**
@@ -130,12 +133,15 @@ const fetchUserCNFTs = async (
   walletAddress?: string,
   limit = 10,
   offset = 0
-): Promise<{ cnfts: CompressedNFT[]; total: number }> => {
-  if (!walletAddress) return { cnfts: [], total: 0 };
+): Promise<{ cnfts: CompressedNFT[]; total: number; hasMore: boolean }> => {
+  if (!walletAddress) return { cnfts: [], total: 0, hasMore: false };
 
   try {
-    console.log('🔍 Fetching cNFTs for wallet:', walletAddress);
+    console.log('🔍 Fetching cNFTs for wallet:', walletAddress, `(limit: ${limit}, offset: ${offset})`);
 
+    // Fetch with pagination
+    // Use a larger page size for initial fetch to get accurate total count
+    const fetchPageSize = 1000; // Helius max
     const response = await fetch('/api/helius-rpc', {
       method: 'POST',
       headers: {
@@ -147,8 +153,8 @@ const fetchUserCNFTs = async (
         method: 'getAssetsByOwner',
         params: {
           ownerAddress: walletAddress,
-          page: Math.floor(offset / limit) + 1,
-          limit,
+          page: 1, // Always fetch from page 1 to get all items
+          limit: fetchPageSize,
           displayOptions: {
             showFungible: false,
             showNativeBalance: false,
@@ -172,7 +178,8 @@ const fetchUserCNFTs = async (
       items: DASAsset[];
     };
 
-    const assets = result.items
+    // Filter and map all compressed assets
+    const allAssets = result.items
       .filter((asset) => asset.compression?.compressed)
       .map((asset) => ({
         id: asset.id,
@@ -188,13 +195,22 @@ const fetchUserCNFTs = async (
         tree: asset.compression.tree,
         leafId: asset.compression.leaf_id,
         owner: asset.ownership.owner,
+        seq: asset.compression?.seq,
       }));
 
-    console.log(`✅ Found ${assets.length} compressed NFT(s)`);
+    // Sort all assets by seq desc (newest first) when possible
+    allAssets.sort((a, b) => (b.seq ?? b.leafId) - (a.seq ?? a.leafId));
+
+    // Return only the requested limit (for progressive loading)
+    const paginatedAssets = allAssets.slice(0, limit);
+    const hasMore = allAssets.length > limit;
+
+    console.log(`✅ Found ${allAssets.length} compressed NFT(s), returning ${paginatedAssets.length} (hasMore: ${hasMore})`);
 
     return {
-      cnfts: assets,
-      total: result.total,
+      cnfts: paginatedAssets,
+      total: allAssets.length,
+      hasMore,
     };
   } catch (error) {
     console.error('❌ Failed to fetch cNFTs:', error);
@@ -207,7 +223,11 @@ const fetchUserCNFTs = async (
 /**
  * Hook to fetch user's compressed NFTs with pagination
  */
-export const useUserCNFTs = (walletAddress?: string, limit = 10, offset = 0) => {
+export const useUserCNFTs = (
+  walletAddress?: string,
+  limit = 10,
+  offset = 0
+) => {
   return useQuery({
     queryKey: ['userCNFTs', walletAddress, limit, offset],
     queryFn: () => fetchUserCNFTs(walletAddress, limit, offset),
