@@ -8,12 +8,12 @@ import React from 'react'
 import { Vault, VaultStatus } from '@/types';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useWallet } from '@/components/solana/solana-provider';
 import { useUserBalance } from '@/hooks/use-user-balance';
+import { CNFTImage } from './cnft-image';
 
 interface VaultCardProps {
   vault: Vault;
@@ -49,12 +49,10 @@ export function VaultCard({ vault }: VaultCardProps) {
       <Card className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer h-full">
         <CardHeader className="p-0">
           <div className="relative aspect-square w-full overflow-hidden bg-muted">
-            <Image
-              src={vault.nftMetadata.image}
-              alt={vault.nftMetadata.name}
-              fill
-              className="object-cover"
-              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            <CNFTImage
+              imageUrl={vault.nftMetadata.image}
+              name={vault.nftMetadata.name}
+              className="absolute inset-0"
             />
           </div>
         </CardHeader>

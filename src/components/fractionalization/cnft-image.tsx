@@ -66,12 +66,16 @@ export function CNFTImage({ imageUrl, name, className }: CNFTImageProps) {
         if (isMetadataUri) {
           try {
             const metadataUrl = convertIpfsUrl(imageUrl);
-            console.log('Fetching metadata from:', metadataUrl);
             
             const response = await fetch(metadataUrl);
             
             if (!response.ok) {
-              throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+              // Silently fail for 404s - these are expected for some old/broken NFTs
+              if (isMounted) {
+                setError(true);
+                setIsLoading(false);
+              }
+              return;
             }
 
             const contentType = response.headers.get('content-type');
@@ -80,11 +84,9 @@ export function CNFTImage({ imageUrl, name, className }: CNFTImageProps) {
             if (!contentType || contentType.includes('application/json') || contentType.includes('text/plain')) {
               try {
                 const metadata = await response.json();
-                console.log('Metadata parsed:', metadata);
                 
                 if (isMounted && metadata.image) {
                   const finalImageUrl = convertIpfsUrl(metadata.image);
-                  console.log('Extracted image URL:', finalImageUrl);
                   setResolvedImage(finalImageUrl);
                   setIsLoading(false);
                   return;
@@ -93,14 +95,17 @@ export function CNFTImage({ imageUrl, name, className }: CNFTImageProps) {
                 // Check properties.files as fallback
                 if (isMounted && metadata.properties?.files?.[0]?.uri) {
                   const finalImageUrl = convertIpfsUrl(metadata.properties.files[0].uri);
-                  console.log('Extracted image URL from properties.files:', finalImageUrl);
                   setResolvedImage(finalImageUrl);
                   setIsLoading(false);
                   return;
                 }
               } catch {
-                // Not valid JSON, might be an image
-                console.log('Not JSON, treating as image:', metadataUrl);
+                // Not valid JSON, might be an image - try displaying it directly
+                if (isMounted) {
+                  setResolvedImage(metadataUrl);
+                  setIsLoading(false);
+                }
+                return;
               }
             }
             
@@ -110,9 +115,13 @@ export function CNFTImage({ imageUrl, name, className }: CNFTImageProps) {
               setIsLoading(false);
             }
             return;
-          } catch (fetchErr) {
-            console.warn('Failed to fetch metadata:', fetchErr);
-            // Fall through to try as direct image
+          } catch {
+            // Failed to fetch - show placeholder
+            if (isMounted) {
+              setError(true);
+              setIsLoading(false);
+            }
+            return;
           }
         }
         
@@ -121,11 +130,8 @@ export function CNFTImage({ imageUrl, name, className }: CNFTImageProps) {
           setResolvedImage(convertIpfsUrl(imageUrl));
           setIsLoading(false);
         }
-      } catch (err) {
-        // Log error but don't spam console for expected failures
-        if (err instanceof Error && !err.message.includes('HTTP 404')) {
-          console.warn('Failed to resolve cNFT image:', err.message);
-        }
+      } catch {
+        // Silently handle errors - most are expected (404s, CORS, etc.)
         if (isMounted) {
           setError(true);
           setIsLoading(false);

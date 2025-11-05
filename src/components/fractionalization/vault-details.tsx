@@ -10,9 +10,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, ExternalLink } from 'lucide-react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { VaultStatus } from '@/types';
+import { CNFTImage } from './cnft-image';
 
 interface VaultDetailsProps {
   vaultId: string;
@@ -80,12 +80,10 @@ export function VaultDetails({ vaultId }: VaultDetailsProps) {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-muted">
-              <Image
-                src={vault.nftMetadata.image}
-                alt={vault.nftMetadata.name}
-                fill
-                className="object-cover"
-                sizes="(max-width: 1024px) 100vw, 50vw"
+              <CNFTImage
+                imageUrl={vault.nftMetadata.image}
+                name={vault.nftMetadata.name}
+                className="absolute inset-0"
               />
             </div>
             {vault.nftMetadata.description && (

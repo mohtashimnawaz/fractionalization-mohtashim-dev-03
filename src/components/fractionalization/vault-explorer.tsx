@@ -9,7 +9,8 @@ import { useVaults } from '@/hooks/useExplorer';
 import { VaultCard } from './vault-card';
 import { VaultStatus } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Loader2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Loader2, Search, X } from 'lucide-react';
 
 const filterOptions = [
   { label: 'All', value: undefined },
@@ -18,33 +19,63 @@ const filterOptions = [
   { label: 'Closed', value: VaultStatus.Closed },
 ];
 
-const VAULTS_PER_PAGE = 10;
+const VAULTS_PER_PAGE = 12;
+const INITIAL_LOAD = 50; // Load first 50 vaults initially for fast page load
 
 export function VaultExplorer() {
   const [statusFilter, setStatusFilter] = useState<VaultStatus | undefined>(undefined);
-  const [limit, setLimit] = useState(VAULTS_PER_PAGE);
+  const [displayLimit, setDisplayLimit] = useState(VAULTS_PER_PAGE);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loadLimit, setLoadLimit] = useState(INITIAL_LOAD); // How many to fetch from API
   
-  const { data, isLoading, error } = useVaults({ limit, offset: 0 });
+  // Load vaults in batches for better performance
+  const { data, isLoading, error } = useVaults({ limit: loadLimit, offset: 0 });
 
-  const vaults = data?.vaults || [];
-  const total = data?.total || 0;
+  const allVaults = data?.vaults || [];
+  const totalVaults = data?.total || 0;
 
-  // Filter vaults by status
-  const filteredVaults = vaults.filter((vault) => {
+  // Filter vaults by status and search query
+  const filteredVaults = allVaults.filter((vault) => {
     if (!vault) return false;
-    return statusFilter ? vault.status === statusFilter : true;
+    
+    // Status filter
+    const matchesStatus = statusFilter ? vault.status === statusFilter : true;
+    
+    // Search filter (by name or symbol)
+    const matchesSearch = searchQuery
+      ? vault.nftMetadata.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        vault.nftMetadata.symbol.toLowerCase().includes(searchQuery.toLowerCase())
+      : true;
+    
+    return matchesStatus && matchesSearch;
   });
 
-  const hasMore = limit < total;
+  // Apply display limit (for "Load More" functionality)
+  const displayedVaults = filteredVaults.slice(0, displayLimit);
+  const hasMore = displayLimit < filteredVaults.length;
+  
+  // Check if we need to load more from API (when filtering shows we need more data)
+  const needsMoreData = searchQuery && filteredVaults.length < 10 && loadLimit < totalVaults;
 
   const handleLoadMore = () => {
-    setLimit((prev) => prev + VAULTS_PER_PAGE);
+    // If we've displayed all filtered results but there are more in the backend
+    if (displayLimit >= filteredVaults.length && loadLimit < totalVaults) {
+      // Load more from API
+      setLoadLimit((prev) => Math.min(prev + 50, totalVaults));
+    } else {
+      // Just show more from already loaded vaults
+      setDisplayLimit((prev) => prev + VAULTS_PER_PAGE);
+    }
   };
 
-  if (isLoading && limit === VAULTS_PER_PAGE) {
+  // Show loading skeleton only on initial load
+  const isInitialLoad = isLoading && allVaults.length === 0;
+  
+  if (isInitialLoad) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-3 text-muted-foreground">Loading vaults...</span>
       </div>
     );
   }
@@ -59,6 +90,51 @@ export function VaultExplorer() {
 
   return (
     <div className="space-y-6">
+      {/* Search Bar */}
+      <div className="flex gap-3 items-center">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Search by name or symbol..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setDisplayLimit(VAULTS_PER_PAGE); // Reset display limit when searching
+            }}
+            className="pl-10 pr-10"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setDisplayLimit(VAULTS_PER_PAGE); // Reset when clearing search
+              }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        {loadLimit < totalVaults && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setLoadLimit(totalVaults)}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Loading...
+              </>
+            ) : (
+              `Load All (${totalVaults})`
+            )}
+          </Button>
+        )}
+      </div>
+
       {/* Filters */}
       <div className="flex flex-wrap gap-2 items-center justify-between">
         <div className="flex flex-wrap gap-2">
@@ -68,7 +144,7 @@ export function VaultExplorer() {
               variant={statusFilter === option.value ? 'default' : 'outline'}
               onClick={() => {
                 setStatusFilter(option.value);
-                setLimit(VAULTS_PER_PAGE); // Reset limit when changing filter
+                setDisplayLimit(VAULTS_PER_PAGE); // Reset display limit when changing filter
               }}
               size="sm"
             >
@@ -77,15 +153,19 @@ export function VaultExplorer() {
           ))}
         </div>
         <p className="text-sm text-muted-foreground">
-          Showing {filteredVaults.length} of {total} vaults
+          Showing {displayedVaults.length} of {filteredVaults.length} vaults
+          {loadLimit < totalVaults && ` (loaded ${allVaults.length} of ${totalVaults})`}
+          {searchQuery && ` (filtered by "${searchQuery}")`}
+          {statusFilter && !searchQuery && ` (${statusFilter} only)`}
+          {needsMoreData && ' - Loading more...'}
         </p>
       </div>
 
       {/* Vault Grid */}
-      {filteredVaults.length > 0 ? (
+      {displayedVaults.length > 0 ? (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredVaults.map((vault) => (
+            {displayedVaults.map((vault) => (
               <VaultCard key={vault.id} vault={vault} />
             ))}
           </div>

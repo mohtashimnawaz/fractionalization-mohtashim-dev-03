@@ -97,7 +97,7 @@ const fetchVaults = async (
             name: 'Loading...',
             symbol: '',
             uri: '',
-            image: '/placeholder-nft.png',
+            image: '/placeholder-nft.svg',
           },
           fractionalMint: fractionMint.toBase58(),
           totalSupply: parseInt(totalSupply) / 1e9,
@@ -112,6 +112,34 @@ const fetchVaults = async (
         return null;
       }
     }).filter((v: Vault | null): v is Vault => v !== null);
+
+    // Helper to extract image URL from asset (same logic as useFractionalize)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const extractImageUrl = (asset: any): string => {
+      let imageUrl = '';
+      
+      // First check files array - this is where Helius puts the image URI from metadata
+      if (asset.content?.files && asset.content.files.length > 0) {
+        const imageFile = asset.content.files.find((file: { uri?: string; mime?: string }) => 
+          file.mime?.startsWith('image/') || file.uri?.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)
+        );
+        if (imageFile?.uri) {
+          imageUrl = imageFile.uri;
+        }
+      }
+      
+      // Fallback to links.image
+      if (!imageUrl && asset.content?.links?.image) {
+        imageUrl = asset.content.links.image;
+      }
+      
+      // If still no image, use json_uri - the CNFTImage component will fetch and parse it
+      if (!imageUrl && asset.content?.json_uri) {
+        imageUrl = asset.content.json_uri;
+      }
+      
+      return imageUrl || '/placeholder-nft.svg';
+    };
 
     // Fetch NFT metadata for each vault
     const vaultsWithMetadata = await Promise.all(
@@ -141,7 +169,7 @@ const fetchVaults = async (
                 name: result.content.metadata.name || 'Unknown NFT',
                 symbol: result.content.metadata.symbol || '',
                 uri: result.content.json_uri || '',
-                image: result.content.links?.image || result.content.files?.[0]?.uri || '/placeholder-nft.png',
+                image: extractImageUrl(result),
                 description: result.content.metadata.description,
                 attributes: result.content.metadata.attributes || [],
               },
@@ -173,8 +201,9 @@ export const useVaults = (options: UseVaultsOptions = {}) => {
   return useQuery({
     queryKey: ['vaults', options.limit, options.offset],
     queryFn: () => fetchVaults(options),
-    staleTime: 30000, // 30 seconds
-    refetchInterval: 60000, // Refetch every minute
+    staleTime: 5000, // 5 seconds - refresh frequently to show new vaults
+    refetchInterval: 15000, // Refetch every 15 seconds
+    refetchOnWindowFocus: true, // Refetch when user comes back to tab
   });
 };
 
