@@ -115,6 +115,7 @@ interface CompressedNFT {
   symbol: string;
   description?: string;
   image: string;
+  jsonUri?: string; // Metadata URI for reference
   attributes?: Array<{
     trait_type: string;
     value: string;
@@ -178,28 +179,90 @@ const fetchUserCNFTs = async (
       items: DASAsset[];
     };
 
+    // Helper function to convert IPFS URLs to HTTP gateway URLs
+    const convertIpfsUrl = (url: string): string => {
+      if (!url) return '/placeholder-nft.png';
+      
+      // If it's already an HTTP URL, return as-is
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        return url;
+      }
+      
+      // Convert ipfs:// to gateway URL
+      if (url.startsWith('ipfs://')) {
+        const hash = url.replace('ipfs://', '');
+        return `https://gateway.pinata.cloud/ipfs/${hash}`;
+      }
+      
+      // If it looks like an IPFS hash (starts with Qm or baf)
+      if (url.match(/^(Qm[a-zA-Z0-9]{44}|baf[a-zA-Z0-9]+)/)) {
+        return `https://gateway.pinata.cloud/ipfs/${url}`;
+      }
+      
+      return url;
+    };
+
     // Filter and map all compressed assets
     const allAssets = result.items
       .filter((asset) => asset.compression?.compressed)
-      .map((asset) => ({
-        id: asset.id,
-        mint: asset.id,
-        name: asset.content?.metadata?.name || 'Unnamed cNFT',
-        symbol: asset.content?.metadata?.symbol || '',
-        description: asset.content?.metadata?.description,
-        image:
-          asset.content?.links?.image ||
-          asset.content?.files?.[0]?.uri ||
-          '/placeholder-nft.png',
-        attributes: asset.content?.metadata?.attributes,
-        tree: asset.compression.tree,
-        leafId: asset.compression.leaf_id,
-        owner: asset.ownership.owner,
-        seq: asset.compression?.seq,
-      }));
+      .map((asset) => {
+        // Priority order for finding image:
+        // 1. content.files[0].uri (primary source from metadata files array)
+        // 2. content.links.image (Helius processed link)
+        // 3. content.json_uri (fetch metadata to get image field)
+        let imageUrl = '';
+        
+        // First check files array - this is where Helius puts the image URI from metadata
+        if (asset.content?.files && asset.content.files.length > 0) {
+          const imageFile = asset.content.files.find((file: { uri?: string; mime?: string }) => 
+            file.mime?.startsWith('image/') || file.uri?.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)
+          );
+          if (imageFile?.uri) {
+            imageUrl = convertIpfsUrl(imageFile.uri);
+          }
+        }
+        
+        // Fallback to links.image
+        if (!imageUrl && asset.content?.links?.image) {
+          imageUrl = convertIpfsUrl(asset.content.links.image);
+        }
+        
+        // If still no image, use json_uri - the CNFTImage component will fetch and parse it
+        if (!imageUrl && asset.content?.json_uri) {
+          imageUrl = asset.content.json_uri;
+        }
+        
+        return {
+          id: asset.id,
+          mint: asset.id,
+          name: asset.content?.metadata?.name || 'Unnamed cNFT',
+          symbol: asset.content?.metadata?.symbol || '',
+          description: asset.content?.metadata?.description,
+          image: imageUrl,
+          jsonUri: asset.content?.json_uri, // Store metadata URI for reference
+          attributes: asset.content?.metadata?.attributes,
+          tree: asset.compression.tree,
+          leafId: asset.compression.leaf_id,
+          owner: asset.ownership.owner,
+          seq: asset.compression?.seq,
+        };
+      });
 
     // Sort all assets by seq desc (newest first) when possible
     allAssets.sort((a, b) => (b.seq ?? b.leafId) - (a.seq ?? a.leafId));
+
+    // Log image sources for debugging
+    const imageStats = {
+      withLinks: allAssets.filter(a => a.image !== '/placeholder-nft.png').length,
+      withPlaceholder: allAssets.filter(a => a.image === '/placeholder-nft.png').length,
+    };
+    console.log(`📷 Image stats: ${imageStats.withLinks} with images, ${imageStats.withPlaceholder} with placeholder`);
+    
+    // Log first asset details for debugging
+    if (allAssets.length > 0) {
+      const firstAsset = allAssets[0];
+      console.log(`🔍 First cNFT: "${firstAsset.name}" - Image: ${firstAsset.image}, URI: ${firstAsset.jsonUri}`);
+    }
 
     // Return only the requested limit (for progressive loading)
     const paginatedAssets = allAssets.slice(0, limit);

@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Loader2, RefreshCw, Plus } from 'lucide-react';
-import Image from 'next/image';
+import { CNFTImage } from './cnft-image';
 
 export function SelectNFTStep() {
   const { publicKey } = useWallet();
@@ -350,12 +350,10 @@ export function SelectNFTStep() {
           >
             <div className="p-4 space-y-3">
               <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-muted">
-                <Image
-                  src={nft.image}
-                  alt={nft.name}
-                  fill
-                  className="object-cover"
-                  sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, 33vw"
+                <CNFTImage
+                  imageUrl={nft.image}
+                  name={nft.name}
+                  className="absolute inset-0"
                 />
                 <div className="absolute top-2 right-2">
                   <Badge variant="secondary" className="bg-primary/90 text-primary-foreground">

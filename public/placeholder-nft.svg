@@ -1,0 +1,7 @@
+<svg width="400" height="400" viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="400" fill="#F3F4F6"/>
+  <path d="M200 120C178.909 120 162 136.909 162 158C162 179.091 178.909 196 200 196C221.091 196 238 179.091 238 158C238 136.909 221.091 120 200 120ZM200 180C188.954 180 180 171.046 180 158C180 144.954 188.954 136 200 136C211.046 136 220 144.954 220 158C220 171.046 211.046 180 200 180Z" fill="#9CA3AF"/>
+  <path d="M280 240L252 212C249.79 209.79 246.21 209.79 244 212L184 272L164 252C161.79 249.79 158.21 249.79 156 252L120 288V296C120 299.314 122.686 302 126 302H274C277.314 302 280 299.314 280 296V240Z" fill="#9CA3AF"/>
+  <rect x="100" y="100" width="200" height="200" rx="8" stroke="#D1D5DB" stroke-width="2"/>
+  <text x="200" y="335" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#6B7280" text-anchor="middle">No Image Available</text>
+</svg>
