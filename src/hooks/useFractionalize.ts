@@ -7,7 +7,6 @@ import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { toast } from 'sonner';
 import {
   PublicKey,
-  Keypair,
   TransactionMessage,
   VersionedTransaction,
   ComputeBudgetProgram,
@@ -21,63 +20,17 @@ import {
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
 import type { FractionalizeParams } from '@/types';
+// Import the generated IDL from Anchor build
+import fractionalizationIdl from '../../anchor/target/idl/fractionalization.json';
 
 const MPL_BUBBLEGUM_ID = new PublicKey('BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY');
 const SPL_ACCOUNT_COMPRESSION_PROGRAM_ID = new PublicKey('cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK');
 const SPL_NOOP_PROGRAM_ID = new PublicKey('noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV');
 const METAPLEX_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
 
-const fractionalizationIdl = {
-  address: 'DM26SsAwF5NSGVWSebfaUBkYAG3ioLkfFnqt1Vr7pq2P',
-  metadata: {
-    name: 'fractionalization',
-    version: '0.1.0',
-    spec: '0.1.0',
-  },
-  instructions: [
-    {
-      name: 'fractionalize_v1',
-      discriminator: [182, 190, 181, 8, 5, 244, 64, 234],
-      accounts: [
-        { name: 'fractionalizer', writable: true, signer: true },
-        { name: 'vault', writable: true },
-        { name: 'mint_authority' },
-        { name: 'fraction_mint', writable: true },
-        { name: 'metadata_account', writable: true },
-        { name: 'fractionalizer_token_account', writable: true },
-        { name: 'treasury' },
-        { name: 'treasury_token_account', writable: true },
-        { name: 'token_program' },
-        { name: 'associated_token_program' },
-        { name: 'system_program' },
-        { name: 'bubblegum_program' },
-        { name: 'compression_program' },
-        { name: 'nft_asset', writable: true },
-        { name: 'merkle_tree', writable: true },
-        { name: 'tree_authority', writable: true },
-        { name: 'leaf_delegate', optional: true },
-        { name: 'log_wrapper' },
-        { name: 'token_metadata_program' },
-      ],
-      args: [
-        { name: 'total_supply', type: 'u64' },
-        { name: 'min_lp_age_seconds', type: { option: 'i64' } },
-        { name: 'min_reclaim_percent', type: { option: 'u8' } },
-        { name: 'min_liquidity_percent', type: { option: 'u8' } },
-        { name: 'min_volume_percent_30d', type: { option: 'u8' } },
-        { name: 'protocol_percent_fee', type: 'u8' },
-        { name: 'root', type: { array: ['u8', 32] } },
-        { name: 'data_hash', type: { array: ['u8', 32] } },
-        { name: 'creator_hash', type: { array: ['u8', 32] } },
-        { name: 'nonce', type: 'u64' },
-        { name: 'index', type: 'u32' },
-        { name: 'cnft_name', type: 'string' },
-        { name: 'cnft_symbol', type: 'string' },
-        { name: 'cnft_uri', type: 'string' },
-      ],
-    },
-  ],
-};
+// HARDCODED IN PROGRAM - Do not pass as instruction arguments
+const FRACTIONALIZATION_FEE_PERCENTAGE = 5; // 5% fee (hardcoded in program)
+const TREASURY_ACCOUNT = new PublicKey('tDeV8biSQiZCEdPvVmJ2fMNh5r7horSMgJ51mYi8HL5'); // Hardcoded treasury
 
 interface DASAsset {
   id: string;
@@ -379,6 +332,11 @@ export function useFractionalizeCNFT() {
             params: { id: params.assetId },
           }),
         });
+        
+        if (!proofResponse.ok) {
+          throw new Error(`Helius API error (${proofResponse.status}): ${proofResponse.statusText}`);
+        }
+        
         const proofResult = await proofResponse.json();
 
         if (proofResult.error) {
@@ -400,6 +358,11 @@ export function useFractionalizeCNFT() {
             params: { id: params.assetId },
           }),
         });
+        
+        if (!assetResponse.ok) {
+          throw new Error(`Helius API error (${assetResponse.status}): ${assetResponse.statusText}`);
+        }
+        
         const assetResult = await assetResponse.json();
 
         if (assetResult.error) {
@@ -474,9 +437,11 @@ export function useFractionalizeCNFT() {
           MPL_BUBBLEGUM_ID
         );
 
-        // Generate random treasury
-        const treasury = Keypair.generate();
-        console.log('💰 Generated treasury:', treasury.publicKey.toBase58());
+        // Use hardcoded treasury account (no longer generated)
+        const treasury = TREASURY_ACCOUNT;
+        console.log('💰 Using hardcoded treasury:', treasury.toBase58());
+        console.log('💰 Fee percentage (hardcoded in program):', FRACTIONALIZATION_FEE_PERCENTAGE, '%');
+        console.log('👤 Wallet public key:', walletPublicKey.toBase58());
 
         // Prepare Anchor program
         const anchorWallet = {
@@ -514,7 +479,6 @@ export function useFractionalizeCNFT() {
         const minVolumePercent30d = params.minVolumePercent30d
           ? parseInt(params.minVolumePercent30d)
           : null;
-        const protocolPercentFee = 5;
 
         console.log('🔧 Building fractionalize instruction');
 
@@ -569,7 +533,7 @@ export function useFractionalizeCNFT() {
 
         const treasuryTokenAccount = getAssociatedTokenAddressSync(
           fractionMint,
-          treasury.publicKey,
+          treasury,
           false,
           TOKEN_PROGRAM_ID,
           ASSOCIATED_TOKEN_PROGRAM_ID
@@ -584,7 +548,6 @@ export function useFractionalizeCNFT() {
             minReclaimPercent,
             minLiquidityPercent,
             minVolumePercent30d,
-            protocolPercentFee,
             rootArray,
             dataHashArray,
             creatorHashArray,
@@ -601,7 +564,7 @@ export function useFractionalizeCNFT() {
             fractionMint,
             metadataAccount: metadataPda,
             fractionalizerTokenAccount,
-            treasury: treasury.publicKey,
+            treasury,
             treasuryTokenAccount,
             tokenProgram: TOKEN_PROGRAM_ID,
             associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -669,7 +632,7 @@ export function useFractionalizeCNFT() {
             return {
               signature,
               assetId: params.assetId,
-              treasury: treasury.publicKey.toBase58(),
+              treasury: treasury.toBase58(),
             };
           }
           throw sendError;
@@ -703,7 +666,7 @@ export function useFractionalizeCNFT() {
         return {
           signature,
           assetId: params.assetId,
-          treasury: treasury.publicKey.toBase58(),
+          treasury: treasury.toBase58(),
         };
       } catch (err) {
         console.error('❌ Fractionalization error:', err);
