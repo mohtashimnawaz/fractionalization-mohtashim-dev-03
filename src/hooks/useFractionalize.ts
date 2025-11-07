@@ -20,8 +20,8 @@ import {
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
 import type { FractionalizeParams } from '@/types';
-// Import the generated IDL from Anchor build
-import fractionalizationIdl from '../../anchor/target/idl/fractionalization.json';
+// Import the IDL from src/lib/idl (copied from anchor build for deployment)
+import fractionalizationIdl from '@/lib/idl/fractionalization.json';
 
 const MPL_BUBBLEGUM_ID = new PublicKey('BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY');
 const SPL_ACCOUNT_COMPRESSION_PROGRAM_ID = new PublicKey('cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK');
