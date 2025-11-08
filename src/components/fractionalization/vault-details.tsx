@@ -20,7 +20,8 @@ interface VaultDetailsProps {
 
 const statusColors: Record<VaultStatus, string> = {
   [VaultStatus.Active]: 'bg-green-500/10 text-green-500',
-  [VaultStatus.Redeemable]: 'bg-blue-500/10 text-blue-500',
+  [VaultStatus.ReclaimInitiated]: 'bg-yellow-500/10 text-yellow-500',
+  [VaultStatus.ReclaimedFinalized]: 'bg-blue-500/10 text-blue-500',
   [VaultStatus.Closed]: 'bg-gray-500/10 text-gray-500',
 };
 
@@ -29,7 +30,7 @@ export function VaultDetails({ vaultId }: VaultDetailsProps) {
   const { data: vault, isLoading, error } = useVaultDetails(vaultId);
   const { data: balance } = useUserBalance(
     account?.address,
-    vault?.fractionalMint
+    vault?.fractionMint
   );
 
   if (isLoading) {
@@ -53,7 +54,6 @@ export function VaultDetails({ vaultId }: VaultDetailsProps) {
     );
   }
 
-  const circulationPercentage = (vault.circulatingSupply / vault.totalSupply) * 100;
   const userSharePercentage = balance
     ? (balance.balance / vault.totalSupply) * 100
     : 0;
@@ -124,32 +124,16 @@ export function VaultDetails({ vaultId }: VaultDetailsProps) {
                   <span className="text-muted-foreground">Total Supply</span>
                   <span className="font-medium">{vault.totalSupply.toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Circulating</span>
-                  <span className="font-medium">{vault.circulatingSupply.toLocaleString()}</span>
-                </div>
-                <div>
-                  <div className="flex justify-between mb-2 text-sm">
-                    <span className="text-muted-foreground">Circulation</span>
-                    <span className="font-medium">{circulationPercentage.toFixed(2)}%</span>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
-                    <div
-                      className="bg-primary h-full transition-all"
-                      style={{ width: `${circulationPercentage}%` }}
-                    />
-                  </div>
-                </div>
               </div>
 
               <div className="pt-4 border-t space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Created</span>
-                  <span>{new Date(vault.createdAt).toLocaleDateString()}</span>
+                  <span>{new Date(vault.creationTimestamp).toLocaleDateString()}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Last Updated</span>
-                  <span>{new Date(vault.updatedAt).toLocaleDateString()}</span>
+                  <span className="text-muted-foreground">Creator</span>
+                  <span className="font-mono text-xs">{vault.creator.slice(0, 4)}...{vault.creator.slice(-4)}</span>
                 </div>
               </div>
             </CardContent>
@@ -185,7 +169,7 @@ export function VaultDetails({ vaultId }: VaultDetailsProps) {
                   </Link>
 
                   {/* Redeem CTA: appears only after original NFT has been reclaimed (Redeemable status) */}
-                  {vault.status === VaultStatus.Redeemable && (
+                  {vault.status === VaultStatus.ReclaimedFinalized && (
                     <Link href={`/redeem?vault=${vault.id}`}>
                       <Button className="w-full" size="lg" variant="outline">
                         Redeem for USDC

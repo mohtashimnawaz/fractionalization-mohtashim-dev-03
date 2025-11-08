@@ -26,7 +26,7 @@ export function RedeemInterface({ initialVaultId }: { initialVaultId?: string } 
   const selectedVault = vaults.find((v) => v.id === selectedVaultId);
   const { data: balance } = useUserBalance(
     account?.address,
-    selectedVault?.fractionalMint
+    selectedVault?.fractionMint
   );
 
   const handleRedeem = (e: React.FormEvent) => {
@@ -70,7 +70,7 @@ export function RedeemInterface({ initialVaultId }: { initialVaultId?: string } 
   }
 
   const redeemableVaults = vaults.filter(
-    (v) => v.status === VaultStatus.Active || v.status === VaultStatus.Redeemable
+    (v) => v.status === VaultStatus.Active || v.status === VaultStatus.ReclaimedFinalized
   );
 
   return (

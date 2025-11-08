@@ -5,7 +5,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useVaults } from '@/hooks/useExplorer';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { useVaultsWithPositions } from '@/hooks/useExplorer';
 import { VaultCard } from './vault-card';
 import { VaultStatus } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -15,21 +16,26 @@ import { Loader2, Search, X } from 'lucide-react';
 const filterOptions = [
   { label: 'All', value: undefined },
   { label: 'Active', value: VaultStatus.Active },
-  { label: 'Redeemable', value: VaultStatus.Redeemable },
+  { label: 'Reclaim Initiated', value: VaultStatus.ReclaimInitiated },
+  { label: 'Reclaimed', value: VaultStatus.ReclaimedFinalized },
   { label: 'Closed', value: VaultStatus.Closed },
 ];
 
 const VAULTS_PER_PAGE = 12;
-const INITIAL_LOAD = 50; // Load first 50 vaults initially for fast page load
+const INITIAL_LOAD = 10; // Load latest 10 vaults initially
 
 export function VaultExplorer() {
+  const { publicKey } = useWallet();
   const [statusFilter, setStatusFilter] = useState<VaultStatus | undefined>(undefined);
   const [displayLimit, setDisplayLimit] = useState(VAULTS_PER_PAGE);
   const [searchQuery, setSearchQuery] = useState('');
   const [loadLimit, setLoadLimit] = useState(INITIAL_LOAD); // How many to fetch from API
   
-  // Load vaults in batches for better performance
-  const { data, isLoading, error } = useVaults({ limit: loadLimit, offset: 0 });
+  // Load vaults with user positions
+  const { data, isLoading, error } = useVaultsWithPositions(
+    publicKey?.toBase58() || null,
+    { limit: loadLimit, offset: 0 }
+  );
 
   const allVaults = data?.vaults || [];
   const totalVaults = data?.total || 0;

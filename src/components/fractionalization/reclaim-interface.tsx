@@ -25,7 +25,7 @@ export function ReclaimInterface({ initialVaultId }: { initialVaultId?: string }
   const selectedVault = vaults.find((v) => v.id === selectedVaultId);
   const { data: balance } = useUserBalance(
     account?.address,
-    selectedVault?.fractionalMint
+    selectedVault?.fractionMint
   );
 
   // Calculate if user can reclaim (holds >= 80% of total supply)
@@ -71,7 +71,7 @@ export function ReclaimInterface({ initialVaultId }: { initialVaultId?: string }
   }
 
   const activeVaults = vaults.filter(
-    (v) => v.status === VaultStatus.Active || v.status === VaultStatus.Redeemable
+    (v) => v.status === VaultStatus.Active || v.status === VaultStatus.ReclaimedFinalized
   );
 
   return (
