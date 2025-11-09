@@ -3,7 +3,7 @@
 
 ---
 
-The core requirements for a fractionalization protocol designed to work with compressed NFTs (for any project utilizing the cNFT standard ([MetaPlex Bubble Gum](https://developers.metaplex.com/bubblegum)). The goal is to enable cNFT owners to split their assets into SPL tokens (fungible fractions), distribute any accrued yield to fraction holders, and support a trustless reclaim mechanism (recovering the underlying cNFT) that respects all token holders fairly.
+The core requirements for a fractionalization protocol designed to work with compressed NFTs (for any project utilizing the cNFT standard ([MetaPlex Bubble Gum](https://developers.metaplex.com/bubblegum))). The goal is to enable cNFT owners to split their assets into SPL tokens (fungible fractions), distribute any accrued yield to fraction holders, and support a trustless reclaim mechanism (recovering the underlying cNFT) that respects all token holders fairly.
 
 The protocol must operate in a decentralized, permissionless way, while remaining compatible with Metaplex standards and Solana-native primitives.
 
