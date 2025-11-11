@@ -221,36 +221,44 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       const userPubkey = new PublicKey(userWallet);
 
       const positions: Record<string, number> = {};
-      let checkedCount = 0;
 
-      // Fetch positions sequentially with rate limiting
-      for (const vault of vaults) {
-        try {
-          const mintPubkey = new PublicKey(vault.fractionMint);
-          
-          console.log(`Checking balance ${++checkedCount}/${vaults.length} for mint ${vault.fractionMint.slice(0, 8)}...`);
-          
-          const response = await connection.getTokenAccountsByOwner(
-            userPubkey,
-            { mint: mintPubkey }
-          );
+      // Fetch all positions in parallel with Promise.all (faster)
+      // But limit to batches of 20 to avoid overwhelming the RPC
+      const BATCH_SIZE = 20;
+      for (let i = 0; i < vaults.length; i += BATCH_SIZE) {
+        const batch = vaults.slice(i, i + BATCH_SIZE);
+        
+        console.log(`Checking batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(vaults.length/BATCH_SIZE)} (${batch.length} vaults)`);
+        
+        await Promise.all(
+          batch.map(async (vault) => {
+            try {
+              const mintPubkey = new PublicKey(vault.fractionMint);
+              
+              const response = await connection.getTokenAccountsByOwner(
+                userPubkey,
+                { mint: mintPubkey }
+              );
 
-          if (response.value.length > 0) {
-            const accountInfo = response.value[0].account.data;
-            const amountBN = new anchor.BN(accountInfo.slice(64, 72), 'le');
-            const balance = parseFloat(amountBN.toString()) / 1e9;
-            
-            if (balance > 0) {
-              positions[vault.fractionMint] = balance;
-              console.log(`✅ User has ${balance} tokens for mint ${vault.fractionMint.slice(0, 8)} (${vault.nftMetadata.name})`);
+              if (response.value.length > 0) {
+                const accountInfo = response.value[0].account.data;
+                const amountBN = new anchor.BN(accountInfo.slice(64, 72), 'le');
+                const balance = parseFloat(amountBN.toString()) / 1e9;
+                
+                if (balance > 0) {
+                  positions[vault.fractionMint] = balance;
+                  console.log(`✅ User has ${balance} tokens for ${vault.nftMetadata.name}`);
+                }
+              }
+            } catch (error) {
+              // Silently skip errors for individual vaults
             }
-          }
-
-          // Rate limiting: 100ms delay between requests
-          await new Promise(resolve => setTimeout(resolve, 100));
-        } catch (error) {
-          // Silently skip vaults where we can't fetch balance
-          console.warn(`Failed to fetch balance for ${vault.fractionMint.slice(0, 8)}:`, error);
+          })
+        );
+        
+        // Small delay between batches to avoid rate limiting
+        if (i + BATCH_SIZE < vaults.length) {
+          await new Promise(resolve => setTimeout(resolve, 200));
         }
       }
 
