@@ -326,12 +326,20 @@ const fetchUserTokenBalance = async (
     const { endpoint } = await endpointResponse.json();
     const connection = new anchor.web3.Connection(endpoint, 'confirmed');
 
+    const mintPubkey = new PublicKey(fractionMint);
+    const userPubkey = new PublicKey(userWallet);
+    
+    console.log(`🔍 Checking balance for wallet ${userWallet.slice(0, 8)}... on mint ${fractionMint.slice(0, 8)}...`);
+    
     const response = await connection.getTokenAccountsByOwner(
-      new PublicKey(userWallet),
-      { mint: new PublicKey(fractionMint) }
+      userPubkey,
+      { mint: mintPubkey }
     );
 
+    console.log(`📊 Found ${response.value.length} token account(s) for this mint`);
+
     if (response.value.length === 0) {
+      console.log(`❌ No token account found for ${fractionMint.slice(0, 8)}...`);
       return 0;
     }
 
@@ -339,10 +347,16 @@ const fetchUserTokenBalance = async (
     const accountInfo = response.value[0].account.data;
     // Token amount is at bytes 64-72 (u64 little-endian)
     const amountBN = new anchor.BN(accountInfo.slice(64, 72), 'le');
-    return amountBN.toNumber() / 1e9; // Convert from lamports to tokens
+    
+    // Safely convert large BN to number (always use string conversion for safety)
+    const balance = parseFloat(amountBN.toString()) / 1e9;
+    
+    // Log ALL balances for debugging (including zero)
+    console.log(`💰 Balance for ${fractionMint.slice(0, 8)}...: ${balance} tokens (raw: ${amountBN.toString()})`);
+    
+    return balance;
   } catch (error) {
-    // Silently return 0 for mints that don't exist or user doesn't have
-    // This is expected for vaults the user hasn't interacted with
+    console.error(`❌ Error fetching balance for ${fractionMint.slice(0, 8)}...:`, error);
     return 0;
   }
 };
@@ -360,19 +374,26 @@ export const useVaultsWithPositions = (
       const { vaults, total } = await fetchVaults(options);
 
       if (!userWallet) {
+        console.log('⚠️ No wallet connected, skipping position fetch');
         return { vaults, total };
       }
 
-      // Fetch user positions for all vaults
-      const vaultsWithPositions = await Promise.all(
-        vaults.map(async (vault) => {
-          const userPosition = await fetchUserTokenBalance(vault.fractionMint, userWallet);
-          return {
-            ...vault,
-            userPosition,
-          };
-        })
-      );
+      console.log(`🔍 Fetching positions for wallet: ${userWallet.slice(0, 8)}...`);
+
+      // Fetch user positions for all vaults with rate limiting
+      // Process sequentially to avoid hitting RPC rate limits
+      const vaultsWithPositions = [];
+      for (const vault of vaults) {
+        const userPosition = await fetchUserTokenBalance(vault.fractionMint, userWallet);
+        vaultsWithPositions.push({
+          ...vault,
+          userPosition,
+        });
+        // Small delay to avoid rate limiting (only if there are more vaults to process)
+        if (vaultsWithPositions.length < vaults.length) {
+          await new Promise(resolve => setTimeout(resolve, 100)); // 100ms delay between requests
+        }
+      }
 
       return { vaults: vaultsWithPositions, total };
     },

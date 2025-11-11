@@ -5,6 +5,7 @@
 "use client";
 
 import React from 'react'
+import { useRouter } from 'next/navigation';
 import { Vault, VaultStatus } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
@@ -31,9 +32,16 @@ const statusLabels: Record<VaultStatus, string> = {
 };
 
 export function VaultCard({ vault }: VaultCardProps) {
+  const router = useRouter();
+  
   // Safety check: return null if vault data is invalid
   if (!vault || !vault.nftMetadata) {
     return null;
+  }
+
+  // Debug logging for user position
+  if (vault.userPosition !== undefined) {
+    console.log(`🎯 VaultCard ${vault.nftMetadata.name}: userPosition =`, vault.userPosition);
   }
 
   const hasPosition = vault.userPosition !== undefined && vault.userPosition > 0;
@@ -44,6 +52,13 @@ export function VaultCard({ vault }: VaultCardProps) {
   // Check if user can initialize reclaim: status is Active AND user has >= min_reclaim_percentage
   const canInitializeReclaim = vault.status === VaultStatus.Active && 
                                userSharePercentage >= vault.minReclaimPercentage;
+
+  const handleReclaimClick = () => {
+    if (canInitializeReclaim) {
+      // Navigate to reclaim page with vault ID
+      router.push(`/reclaim?vault=${vault.id}`);
+    }
+  };
 
   const formatDate = (timestamp: number) => {
     if (!timestamp || timestamp === 0) return 'N/A';
@@ -154,6 +169,7 @@ export function VaultCard({ vault }: VaultCardProps) {
           className="w-full"
           disabled={!canInitializeReclaim}
           variant={canInitializeReclaim ? 'default' : 'secondary'}
+          onClick={handleReclaimClick}
         >
           {canInitializeReclaim 
             ? 'Initialize Reclaim' 

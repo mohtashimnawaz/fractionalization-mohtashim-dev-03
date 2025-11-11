@@ -4,9 +4,10 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { useVaultsWithPositions } from '@/hooks/useExplorer';
+import { useVaultStore } from '@/stores/useVaultStore';
+import { useVaultEventListener } from '@/hooks/useVaultEventListener';
 import { VaultCard } from './vault-card';
 import { VaultStatus } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -21,61 +22,119 @@ const filterOptions = [
   { label: 'Closed', value: VaultStatus.Closed },
 ];
 
-const VAULTS_PER_PAGE = 12;
-const INITIAL_LOAD = 10; // Load latest 10 vaults initially
+const INITIAL_DISPLAY = 10; // Show 10 vaults initially
+const LOAD_MORE_COUNT = 10; // Load 10 more when clicking "Load More"
 
 export function VaultExplorer() {
   const { publicKey } = useWallet();
   const [statusFilter, setStatusFilter] = useState<VaultStatus | undefined>(undefined);
-  const [displayLimit, setDisplayLimit] = useState(VAULTS_PER_PAGE);
+  const [displayLimit, setDisplayLimit] = useState(INITIAL_DISPLAY);
   const [searchQuery, setSearchQuery] = useState('');
-  const [loadLimit, setLoadLimit] = useState(INITIAL_LOAD); // How many to fetch from API
+  const hasLoadedPositions = useRef(false);
   
-  // Load vaults with user positions
-  const { data, isLoading, error } = useVaultsWithPositions(
-    publicKey?.toBase58() || null,
-    { limit: loadLimit, offset: 0 }
-  );
+  // Listen to program events and auto-refresh
+  useVaultEventListener();
+  
+  // Get store state and actions - use selector for better reactivity
+  const vaults = useVaultStore(state => state.vaults);
+  const isLoading = useVaultStore(state => state.isLoading);
+  const error = useVaultStore(state => state.error);
+  const userPositions = useVaultStore(state => state.userPositions);
+  const fetchAllVaults = useVaultStore(state => state.fetchAllVaults);
+  const fetchUserPositions = useVaultStore(state => state.fetchUserPositions);
+  const clearUserPositions = useVaultStore(state => state.clearUserPositions);
+  const getVaultsByStatus = useVaultStore(state => state.getVaultsByStatus);
 
-  const allVaults = data?.vaults || [];
-  const totalVaults = data?.total || 0;
+  // Fetch all vaults on mount
+  useEffect(() => {
+    console.log('🚀 Component mounted, checking if vaults need to be fetched...');
+    console.log('Current vault count:', vaults.length);
+    console.log('Is loading:', isLoading);
+    
+    if (vaults.length === 0 && !isLoading) {
+      console.log('⚡ Fetching all vaults...');
+      fetchAllVaults().catch(err => {
+        console.error('Failed to fetch vaults:', err);
+      });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Filter vaults by status and search query
-  const filteredVaults = allVaults.filter((vault) => {
+  // Fetch user positions when wallet connects AND vaults are loaded
+  useEffect(() => {
+    console.log('👛 Wallet effect running...', {
+      hasWallet: !!publicKey,
+      vaultCount: vaults.length,
+      hasLoadedPositions: hasLoadedPositions.current
+    });
+    
+    if (publicKey && vaults.length > 0 && !hasLoadedPositions.current) {
+      console.log('💼 Wallet connected and vaults loaded, fetching positions...');
+      fetchUserPositions(publicKey.toBase58()).catch(err => {
+        console.error('Failed to fetch positions:', err);
+      });
+      hasLoadedPositions.current = true;
+    } else if (!publicKey) {
+      console.log('👋 Wallet disconnected, clearing positions');
+      clearUserPositions();
+      hasLoadedPositions.current = false;
+    }
+  }, [publicKey, vaults.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Filter vaults by status
+  const statusFilteredVaults = statusFilter !== undefined 
+    ? getVaultsByStatus(statusFilter) 
+    : vaults;
+
+  // Apply search filter
+  const filteredVaults = statusFilteredVaults.filter((vault) => {
     if (!vault) return false;
     
-    // Status filter
-    const matchesStatus = statusFilter ? vault.status === statusFilter : true;
-    
     // Search filter (by name or symbol)
-    const matchesSearch = searchQuery
-      ? vault.nftMetadata.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        vault.nftMetadata.symbol.toLowerCase().includes(searchQuery.toLowerCase())
-      : true;
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const matchesName = vault.nftMetadata?.name?.toLowerCase().includes(query);
+      const matchesSymbol = vault.nftMetadata?.symbol?.toLowerCase().includes(query);
+      return matchesName || matchesSymbol;
+    }
     
-    return matchesStatus && matchesSearch;
+    return true;
   });
 
-  // Apply display limit (for "Load More" functionality)
-  const displayedVaults = filteredVaults.slice(0, displayLimit);
+  // Add user positions to vaults
+  const vaultsWithPositions = filteredVaults.map(vault => {
+    const position = userPositions[vault.fractionMint] || 0;
+    return {
+      ...vault,
+      userPosition: position,
+    };
+  });
+
+  // Debug logging
+  useEffect(() => {
+    console.log(`📊 UserPositions from store:`, userPositions);
+    console.log(`🎯 Vaults with positions:`, vaultsWithPositions.filter(v => v.userPosition && v.userPosition > 0).length);
+    
+    // Log specific mints we're looking for
+    Object.keys(userPositions).forEach(mint => {
+      console.log(`� Looking for mint ${mint.slice(0, 8)}... with position ${userPositions[mint]}`);
+      const vault = vaultsWithPositions.find(v => v.fractionMint === mint);
+      if (vault) {
+        console.log(`✅ Found vault ${vault.nftMetadata.name} with position ${vault.userPosition}`);
+      } else {
+        console.log(`❌ Vault not found for mint ${mint.slice(0, 8)}`);
+      }
+    });
+  }, [userPositions, vaultsWithPositions]);
+
+  // Apply display limit
+  const displayedVaults = vaultsWithPositions.slice(0, displayLimit);
+
   const hasMore = displayLimit < filteredVaults.length;
-  
-  // Check if we need to load more from API (when filtering shows we need more data)
-  const needsMoreData = searchQuery && filteredVaults.length < 10 && loadLimit < totalVaults;
+  const isInitialLoad = isLoading && vaults.length === 0;
 
   const handleLoadMore = () => {
-    // If we've displayed all filtered results but there are more in the backend
-    if (displayLimit >= filteredVaults.length && loadLimit < totalVaults) {
-      // Load more from API
-      setLoadLimit((prev) => Math.min(prev + 50, totalVaults));
-    } else {
-      // Just show more from already loaded vaults
-      setDisplayLimit((prev) => prev + VAULTS_PER_PAGE);
-    }
+    setDisplayLimit((prev) => prev + LOAD_MORE_COUNT);
   };
-
-  // Show loading skeleton only on initial load
-  const isInitialLoad = isLoading && allVaults.length === 0;
   
   if (isInitialLoad) {
     return (
@@ -89,7 +148,10 @@ export function VaultExplorer() {
   if (error) {
     return (
       <div className="text-center py-20">
-        <p className="text-destructive">Failed to load vaults</p>
+        <p className="text-destructive">Failed to load vaults: {error}</p>
+        <Button onClick={() => fetchAllVaults()} className="mt-4">
+          Retry
+        </Button>
       </div>
     );
   }
@@ -106,7 +168,7 @@ export function VaultExplorer() {
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
-              setDisplayLimit(VAULTS_PER_PAGE); // Reset display limit when searching
+              setDisplayLimit(INITIAL_DISPLAY); // Reset display limit when searching
             }}
             className="pl-10 pr-10"
           />
@@ -114,7 +176,7 @@ export function VaultExplorer() {
             <button
               onClick={() => {
                 setSearchQuery('');
-                setDisplayLimit(VAULTS_PER_PAGE); // Reset when clearing search
+                setDisplayLimit(INITIAL_DISPLAY); // Reset when clearing search
               }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             >
@@ -122,23 +184,6 @@ export function VaultExplorer() {
             </button>
           )}
         </div>
-        {loadLimit < totalVaults && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setLoadLimit(totalVaults)}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Loading...
-              </>
-            ) : (
-              `Load All (${totalVaults})`
-            )}
-          </Button>
-        )}
       </div>
 
       {/* Filters */}
@@ -150,7 +195,7 @@ export function VaultExplorer() {
               variant={statusFilter === option.value ? 'default' : 'outline'}
               onClick={() => {
                 setStatusFilter(option.value);
-                setDisplayLimit(VAULTS_PER_PAGE); // Reset display limit when changing filter
+                setDisplayLimit(INITIAL_DISPLAY); // Reset display limit when changing filter
               }}
               size="sm"
             >
@@ -160,10 +205,7 @@ export function VaultExplorer() {
         </div>
         <p className="text-sm text-muted-foreground">
           Showing {displayedVaults.length} of {filteredVaults.length} vaults
-          {loadLimit < totalVaults && ` (loaded ${allVaults.length} of ${totalVaults})`}
           {searchQuery && ` (filtered by "${searchQuery}")`}
-          {statusFilter && !searchQuery && ` (${statusFilter} only)`}
-          {needsMoreData && ' - Loading more...'}
         </p>
       </div>
 
@@ -182,17 +224,9 @@ export function VaultExplorer() {
               <Button
                 onClick={handleLoadMore}
                 variant="outline"
-                disabled={isLoading}
                 size="lg"
               >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Loading...
-                  </>
-                ) : (
-                  'Load More'
-                )}
+                Load More ({filteredVaults.length - displayLimit} remaining)
               </Button>
             </div>
           )}
@@ -201,7 +235,9 @@ export function VaultExplorer() {
         <div className="text-center py-20 space-y-2">
           <p className="text-muted-foreground text-lg">No vaults found</p>
           <p className="text-sm text-muted-foreground">
-            Fractionalize your first cNFT to create a vault
+            {searchQuery || statusFilter 
+              ? 'Try adjusting your filters' 
+              : 'Fractionalize your first cNFT to create a vault'}
           </p>
         </div>
       )}
