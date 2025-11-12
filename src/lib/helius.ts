@@ -272,3 +272,82 @@ export function proofToAccounts(proof: AssetProof): PublicKey[] {
 export function getHeliusRpcUrl(): string {
   return HELIUS_RPC_URL;
 }
+
+/**
+ * Combined structure with asset and proof data
+ * Used for on-chain operations that require both
+ */
+export interface AssetWithProof {
+  asset: DASAsset;
+  proof: AssetProof;
+  // Convenience fields
+  rpcAsset: {
+    id: string;
+  };
+  metadata: {
+    name: string;
+    symbol: string;
+    uri: string;
+  };
+  compression: {
+    data_hash: string;
+    creator_hash: string;
+    leaf_id: number;
+    tree: string;
+  };
+  merkleTree: string;
+  root: Uint8Array;
+  dataHash: Uint8Array;
+  creatorHash: Uint8Array;
+  nonce: bigint;
+  index: number;
+  leafDelegate: string | null;
+}
+
+/**
+ * Fetch asset with proof - combines both getAsset and getAssetProof
+ * This is the main function you'll use for initialize_reclaim
+ */
+export async function getAssetWithProof(assetId: string): Promise<AssetWithProof> {
+  try {
+    // Fetch both asset and proof in parallel
+    const [asset, proof] = await Promise.all([
+      getAsset(assetId),
+      getAssetProof(assetId),
+    ]);
+
+    // Convert proof strings to Uint8Arrays
+    const root = Uint8Array.from(Buffer.from(proof.root, 'base64'));
+    const dataHash = Uint8Array.from(Buffer.from(asset.compression.data_hash, 'base64'));
+    const creatorHash = Uint8Array.from(Buffer.from(asset.compression.creator_hash, 'base64'));
+
+    return {
+      asset,
+      proof,
+      rpcAsset: {
+        id: asset.id,
+      },
+      metadata: {
+        name: asset.content?.metadata?.name || 'Unknown',
+        symbol: asset.content?.metadata?.symbol || '',
+        uri: asset.content?.json_uri || '',
+      },
+      compression: {
+        data_hash: asset.compression.data_hash,
+        creator_hash: asset.compression.creator_hash,
+        leaf_id: asset.compression.leaf_id,
+        tree: asset.compression.tree,
+      },
+      merkleTree: asset.compression.tree,
+      root,
+      dataHash,
+      creatorHash,
+      nonce: BigInt(asset.compression.leaf_id),
+      index: asset.compression.leaf_id,
+      leafDelegate: asset.ownership.delegate,
+    };
+  } catch (error) {
+    console.error('Error fetching asset with proof:', error);
+    throw error;
+  }
+}

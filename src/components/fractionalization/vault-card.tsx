@@ -53,11 +53,8 @@ export function VaultCard({ vault }: VaultCardProps) {
   const canInitializeReclaim = vault.status === VaultStatus.Active && 
                                userSharePercentage >= vault.minReclaimPercentage;
 
-  const handleReclaimClick = () => {
-    if (canInitializeReclaim) {
-      // Navigate to reclaim page with vault ID
-      router.push(`/reclaim?vault=${vault.id}`);
-    }
+  const handleViewDetails = () => {
+    router.push(`/vault/${vault.id}`);
   };
 
   const formatDate = (timestamp: number) => {
@@ -75,7 +72,10 @@ export function VaultCard({ vault }: VaultCardProps) {
   };
 
   return (
-    <Card className="overflow-hidden hover:shadow-lg transition-shadow h-full flex flex-col">
+    <Card 
+      className="overflow-hidden hover:shadow-lg transition-shadow h-full flex flex-col cursor-pointer"
+      onClick={handleViewDetails}
+    >
       {/* NFT Image */}
       <CardHeader className="p-0">
         <div className="relative aspect-square w-full overflow-hidden bg-muted">
@@ -163,17 +163,20 @@ export function VaultCard({ vault }: VaultCardProps) {
         </div>
       </CardContent>
 
-      {/* Initialize Reclaim Button */}
+      {/* View Details Button */}
       <CardFooter className="p-4 pt-0">
         <Button
           className="w-full"
-          disabled={!canInitializeReclaim}
-          variant={canInitializeReclaim ? 'default' : 'secondary'}
-          onClick={handleReclaimClick}
+          variant="default"
+          onClick={(e) => {
+            e.stopPropagation(); // Prevent card click
+            handleViewDetails();
+          }}
         >
-          {canInitializeReclaim 
-            ? 'Initialize Reclaim' 
-            : `Reclaim (Need ≥${vault.minReclaimPercentage}%)`}
+          View Details
+          {canInitializeReclaim && (
+            <Badge className="ml-2 bg-green-500">Eligible for Reclaim</Badge>
+          )}
         </Button>
       </CardFooter>
     </Card>

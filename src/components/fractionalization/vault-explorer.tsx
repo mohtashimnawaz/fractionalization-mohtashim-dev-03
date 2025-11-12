@@ -12,7 +12,7 @@ import { VaultCard } from './vault-card';
 import { VaultStatus } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, Search, X } from 'lucide-react';
+import { Loader2, Search, X, RefreshCw } from 'lucide-react';
 
 const filterOptions = [
   { label: 'All', value: undefined },
@@ -30,9 +30,12 @@ export function VaultExplorer() {
   const [statusFilter, setStatusFilter] = useState<VaultStatus | undefined>(undefined);
   const [displayLimit, setDisplayLimit] = useState(INITIAL_DISPLAY);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const hasLoadedPositions = useRef(false);
   
   // Listen to program events and auto-refresh
+  // Note: This uses WebSocket connections which may show warnings in console
+  // The app will work fine without it - you'll just need to manually refresh
   useVaultEventListener();
   
   // Get store state and actions - use selector for better reactivity
@@ -40,23 +43,26 @@ export function VaultExplorer() {
   const isLoading = useVaultStore(state => state.isLoading);
   const error = useVaultStore(state => state.error);
   const userPositions = useVaultStore(state => state.userPositions);
+  const lastFetchTimestamp = useVaultStore(state => state.lastFetchTimestamp);
+  const fetchVaultsIfStale = useVaultStore(state => state.fetchVaultsIfStale);
   const fetchAllVaults = useVaultStore(state => state.fetchAllVaults);
   const fetchUserPositions = useVaultStore(state => state.fetchUserPositions);
   const clearUserPositions = useVaultStore(state => state.clearUserPositions);
   const getVaultsByStatus = useVaultStore(state => state.getVaultsByStatus);
+  const invalidateCache = useVaultStore(state => state.invalidateCache);
+  const isCacheValid = useVaultStore(state => state.isCacheValid);
 
-  // Fetch all vaults on mount
+  // Fetch vaults on mount (uses cached data if valid)
   useEffect(() => {
-    console.log('🚀 Component mounted, checking if vaults need to be fetched...');
+    console.log('🚀 Component mounted, checking vault cache...');
     console.log('Current vault count:', vaults.length);
     console.log('Is loading:', isLoading);
+    console.log('Cache valid:', isCacheValid());
     
-    if (vaults.length === 0 && !isLoading) {
-      console.log('⚡ Fetching all vaults...');
-      fetchAllVaults().catch(err => {
-        console.error('Failed to fetch vaults:', err);
-      });
-    }
+    // Use smart fetching that respects cache
+    fetchVaultsIfStale().catch(err => {
+      console.error('Failed to fetch vaults:', err);
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch user positions when wallet connects AND vaults are loaded
@@ -135,6 +141,35 @@ export function VaultExplorer() {
   const handleLoadMore = () => {
     setDisplayLimit((prev) => prev + LOAD_MORE_COUNT);
   };
+
+  // Manual refresh handler
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    invalidateCache(); // Force cache invalidation
+    await fetchAllVaults();
+    if (publicKey) {
+      await fetchUserPositions(publicKey.toBase58());
+    }
+    setIsRefreshing(false);
+  };
+
+  // Format last update time
+  const getLastUpdateText = () => {
+    if (!lastFetchTimestamp) return 'Never updated';
+    const now = Date.now();
+    const diff = now - lastFetchTimestamp;
+    const minutes = Math.floor(diff / 60000);
+    const seconds = Math.floor((diff % 60000) / 1000);
+    
+    if (minutes === 0) {
+      return `Updated ${seconds}s ago`;
+    } else if (minutes < 60) {
+      return `Updated ${minutes}m ago`;
+    } else {
+      const hours = Math.floor(minutes / 60);
+      return `Updated ${hours}h ago`;
+    }
+  };
   
   if (isInitialLoad) {
     return (
@@ -158,7 +193,7 @@ export function VaultExplorer() {
 
   return (
     <div className="space-y-6">
-      {/* Search Bar */}
+      {/* Search Bar and Refresh */}
       <div className="flex gap-3 items-center">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -184,7 +219,31 @@ export function VaultExplorer() {
             </button>
           )}
         </div>
+        
+        {/* Refresh Button */}
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleRefresh}
+            disabled={isRefreshing || isLoading}
+            variant="outline"
+            size="sm"
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
+
+      {/* Last Update Info */}
+      {lastFetchTimestamp > 0 && (
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>{getLastUpdateText()}</span>
+          <span className={isCacheValid() ? 'text-green-600' : 'text-yellow-600'}>
+            {isCacheValid() ? '✓ Cache valid' : '⚠ Cache expired'}
+          </span>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2 items-center justify-between">

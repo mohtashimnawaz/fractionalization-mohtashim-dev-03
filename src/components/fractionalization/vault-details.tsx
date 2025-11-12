@@ -13,6 +13,7 @@ import { Loader2, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { VaultStatus } from '@/types';
 import { CNFTImage } from './cnft-image';
+import { InitializeReclaimButton } from './initialize-reclaim-button';
 
 interface VaultDetailsProps {
   vaultId: string;
@@ -57,6 +58,8 @@ export function VaultDetails({ vaultId }: VaultDetailsProps) {
   const userSharePercentage = balance
     ? (balance.balance / vault.totalSupply) * 100
     : 0;
+
+  const meetsReclaimThreshold = userSharePercentage >= vault.minReclaimPercentage;
 
   return (
     <div className="space-y-6">
@@ -155,18 +158,32 @@ export function VaultDetails({ vaultId }: VaultDetailsProps) {
                     <span className="text-muted-foreground">Your Share</span>
                     <span className="font-medium">{userSharePercentage.toFixed(4)}%</span>
                   </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Reclaim Eligibility</span>
+                    <Badge variant={meetsReclaimThreshold ? "default" : "destructive"}>
+                      {meetsReclaimThreshold ? 'Eligible' : `Need ${vault.minReclaimPercentage}%`}
+                    </Badge>
+                  </div>
                 </div>
                 <div className="pt-4 space-y-2">
-                  <Link href={`/reclaim?vault=${vault.id}`}>
+                  {/* Initialize Reclaim Button - Only show if Active and meets threshold */}
+                  {vault.status === VaultStatus.Active && meetsReclaimThreshold && balance && (
+                    <InitializeReclaimButton 
+                      vault={vault}
+                      userBalance={balance.balance}
+                    />
+                  )}
+
+                  {/* Old Reclaim Link - Keep for backwards compatibility */}
+                  {vault.status === VaultStatus.Active && !meetsReclaimThreshold && (
                     <Button 
                       className="w-full" 
                       size="lg"
-                      disabled={userSharePercentage < 80}
+                      disabled
                     >
-                      Reclaim NFT
-                      {userSharePercentage < 80 && ' (Need ≥80%)'}
+                      Reclaim NFT (Need ≥{vault.minReclaimPercentage}%)
                     </Button>
-                  </Link>
+                  )}
 
                   {/* Redeem CTA: appears only after original NFT has been reclaimed (Redeemable status) */}
                   {vault.status === VaultStatus.ReclaimedFinalized && (
