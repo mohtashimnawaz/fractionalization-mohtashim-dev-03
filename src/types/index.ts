@@ -4,3 +4,4 @@
 
 export * from './vault';
 export * from './fractionalization';
+export * from './fractionalization-ui';

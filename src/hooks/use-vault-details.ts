@@ -3,7 +3,6 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { Vault } from '@/types';
 import { useVaultStore } from '@/stores/useVaultStore';
 import { useEffect } from 'react';
 

@@ -78,7 +78,6 @@ export async function POST(request: NextRequest) {
     
     // Log rate limit headers if available
     const rateLimitRemaining = response.headers.get('x-ratelimit-remaining');
-    const rateLimitReset = response.headers.get('x-ratelimit-reset');
     
     if (rateLimitRemaining !== null) {
       console.log(`📊 Helius rate limit: ${rateLimitRemaining} remaining`);

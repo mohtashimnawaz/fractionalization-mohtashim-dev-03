@@ -25,11 +25,11 @@ export function ConfigureTokensStep() {
   const fractionalizeHook = useFractionalizeCNFT();
   const { fractionalize, isPending, isSuccess } = fractionalizeHook;
 
-  const [totalSupply, setTotalSupply] = useState(formData.totalSupply || '1000000');
-  const [minLpAgeSeconds, setMinLpAgeSeconds] = useState(formData.minLpAgeSeconds || '');
-  const [minReclaimPercent, setMinReclaimPercent] = useState(formData.minReclaimPercent || '');
-  const [minLiquidityPercent, setMinLiquidityPercent] = useState(formData.minLiquidityPercent || '');
-  const [minVolumePercent30d, setMinVolumePercent30d] = useState(formData.minVolumePercent30d || '');
+  const [totalSupply, setTotalSupply] = useState(String(formData.totalSupply || 1000000));
+  const [minLpAgeSeconds, setMinLpAgeSeconds] = useState(String(formData.minLpAgeSeconds || ''));
+  const [minReclaimPercent, setMinReclaimPercent] = useState(String(formData.minReclaimPercentage || ''));
+  const [minLiquidityPercent, setMinLiquidityPercent] = useState(String(formData.minLiquidityPercent || ''));
+  const [minVolumePercent30d, setMinVolumePercent30d] = useState(String(formData.minVolumePercent30d || ''));
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const handleBack = () => {

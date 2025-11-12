@@ -61,96 +61,27 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
       console.log('🔍 Fetching ALL vaults from program:', PROGRAM_ID.toBase58());
 
-      // Get all program accounts
-      const allAccounts = await connection.getProgramAccounts(PROGRAM_ID, {
-        encoding: 'base64',
-      });
+      // Create Anchor provider and program
+      const provider = new anchor.AnchorProvider(
+        connection,
+        {} as anchor.Wallet,
+        { commitment: 'confirmed' }
+      );
+      const program = new anchor.Program(idl as anchor.Idl, provider);
 
-      console.log('📦 Found total program accounts:', allAccounts.length);
-
-      const possibleVaultSizes = [197, 245]; // Old and new format
+      // Fetch all vault accounts using Anchor (automatically deserializes)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vaultAccounts = await (program.account as any).vault.all();
       
-      // Filter for vault accounts
-      const vaultAccounts = allAccounts.filter((a) => {
-        const size = a.account.data.length;
-        return possibleVaultSizes.includes(size);
-      });
-
-      console.log(`📦 Found ${vaultAccounts.length} vault accounts (sizes: ${possibleVaultSizes.join(', ')})`);
+      console.log(`📦 Found ${vaultAccounts.length} vault accounts`);
 
       // Parse all vault accounts
-      const parsedVaults: Vault[] = vaultAccounts.map((account) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const parsedVaults: Vault[] = vaultAccounts.map((vaultAccount: any) => {
         try {
-          const data = account.account.data;
-          const dataLength = data.length;
-          const isOldFormat = dataLength === 197;
-          
-          let off = 8; // Skip discriminator
-
-          // Parse vault fields
-          const nftMint = new PublicKey(data.slice(off, off + 32));
-          off += 32;
-
-          const nftAssetId = new PublicKey(data.slice(off, off + 32));
-          off += 32;
-
-          const fractionMint = new PublicKey(data.slice(off, off + 32));
-          off += 32;
-
-          const totalSupplyBN = new anchor.BN(data.slice(off, off + 8), 'le');
-          off += 8;
-
-          const creator = new PublicKey(data.slice(off, off + 32));
-          off += 32;
-
-          const creationTimestamp = new anchor.BN(data.slice(off, off + 8), 'le', true);
-          off += 8;
-
-          const statusByte = data[off];
-          off += 1;
-
-          const reclaimTimestamp = new anchor.BN(data.slice(off, off + 8), 'le', true);
-          off += 8;
-
-          const twapPriceAtReclaim = new anchor.BN(data.slice(off, off + 8), 'le');
-          off += 8;
-
-          const totalCompensation = new anchor.BN(data.slice(off, off + 8), 'le');
-          off += 8;
-
-          const remainingCompensation = new anchor.BN(data.slice(off, off + 8), 'le');
-          off += 8;
-
-          off += 1; // bump
-
-          const minLpAgeSeconds = new anchor.BN(data.slice(off, off + 8), 'le', true);
-          off += 8;
-
-          const minReclaimPercentage = data[off];
-          off += 1;
-
-          const minLiquidityPercent = data[off];
-          off += 1;
-
-          const minVolumePercent30d = data[off];
-          off += 1;
-
-          // New fields (only in 245-byte accounts)
-          let reclaimInitiator: PublicKey;
-          let reclaimInitiationTimestamp: anchor.BN;
-          let tokensInEscrow: anchor.BN;
-
-          if (isOldFormat) {
-            reclaimInitiator = PublicKey.default;
-            reclaimInitiationTimestamp = new anchor.BN(0);
-            tokensInEscrow = new anchor.BN(0);
-          } else {
-            reclaimInitiator = new PublicKey(data.slice(off, off + 32));
-            off += 32;
-            reclaimInitiationTimestamp = new anchor.BN(data.slice(off, off + 8), 'le', true);
-            off += 8;
-            tokensInEscrow = new anchor.BN(data.slice(off, off + 8), 'le');
-          }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const account = vaultAccount.account as any;
+          const pubkey = vaultAccount.publicKey;
 
           // Helper to safely convert BN to number
           const safeToNumber = (bn: anchor.BN, divisor = 1): number => {
@@ -158,38 +89,43 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
           };
 
           return {
-            id: account.pubkey.toBase58(),
-            publicKey: account.pubkey.toBase58(),
-            nftMint: nftMint.toBase58(),
-            nftAssetId: nftAssetId.toBase58(),
+            id: pubkey.toBase58(),
+            publicKey: pubkey.toBase58(),
+            nftMint: account.nftMint.toBase58(),
+            nftAssetId: account.nftAssetId.toBase58(),
             nftMetadata: {
               name: 'Loading...',
               symbol: '',
               uri: '',
               image: '/placeholder-nft.svg',
             },
-            fractionMint: fractionMint.toBase58(),
-            totalSupply: safeToNumber(totalSupplyBN, 1e9),
-            creator: creator.toBase58(),
-            creationTimestamp: safeToNumber(creationTimestamp, 1) * 1000,
-            status: statusByte as VaultStatus,
-            reclaimTimestamp: safeToNumber(reclaimTimestamp, 1) * 1000,
-            twapPriceAtReclaim: safeToNumber(twapPriceAtReclaim),
-            totalCompensation: safeToNumber(totalCompensation),
-            remainingCompensation: safeToNumber(remainingCompensation),
-            minLpAgeSeconds: safeToNumber(minLpAgeSeconds),
-            minReclaimPercentage,
-            minLiquidityPercent,
-            minVolumePercent30d,
-            reclaimInitiator: reclaimInitiator.toBase58(),
-            reclaimInitiationTimestamp: safeToNumber(reclaimInitiationTimestamp, 1) * 1000,
-            tokensInEscrow: safeToNumber(tokensInEscrow, 1e9),
+            fractionMint: account.fractionMint.toBase58(),
+            totalSupply: safeToNumber(account.totalSupply, 1e9),
+            creator: account.creator.toBase58(),
+            creationTimestamp: safeToNumber(account.creationTimestamp, 1) * 1000,
+            status: account.status.active ? VaultStatus.Active :
+                    account.status.reclaimInitiated ? VaultStatus.ReclaimInitiated :
+                    account.status.reclaimedFinalized ? VaultStatus.ReclaimedFinalized :
+                    VaultStatus.Closed,
+            reclaimTimestamp: safeToNumber(account.reclaimTimestamp, 1) * 1000,
+            twapPriceAtReclaim: safeToNumber(account.twapPriceAtReclaim),
+            totalCompensation: safeToNumber(account.totalCompensation),
+            remainingCompensation: safeToNumber(account.remainingCompensation),
+            minLpAgeSeconds: safeToNumber(account.minLpAgeSeconds),
+            minReclaimPercentage: account.minReclaimPercentage,
+            minLiquidityPercent: account.minLiquidityPercent,
+            minVolumePercent30d: account.minVolumePercent30d,
+            reclaimInitiator: account.reclaimInitiator.equals(PublicKey.default) 
+              ? PublicKey.default.toBase58()
+              : account.reclaimInitiator.toBase58(),
+            reclaimInitiationTimestamp: safeToNumber(account.reclaimInitiationTimestamp, 1) * 1000,
+            tokensInEscrow: safeToNumber(account.tokensInEscrow, 1e9),
           };
         } catch (err) {
           console.error('Error parsing vault:', err);
           return null;
         }
-      }).filter((v): v is Vault => v !== null);
+      }).filter((v: Vault | null): v is Vault => v !== null);
 
       // Sort by creation timestamp (newest first)
       const sortedVaults = parsedVaults.sort((a, b) => b.creationTimestamp - a.creationTimestamp);
@@ -243,84 +179,29 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       const { endpoint } = await endpointResponse.json();
       const connection = new Connection(endpoint, 'confirmed');
       
-      const vaultPubkey = new PublicKey(vaultId);
-      const accountInfo = await connection.getAccountInfo(vaultPubkey);
+      // Create Anchor provider and program
+      const provider = new anchor.AnchorProvider(
+        connection,
+        {} as anchor.Wallet,
+        { commitment: 'confirmed' }
+      );
+      const program = new anchor.Program(idl as anchor.Idl, provider);
       
-      if (!accountInfo) {
+      const vaultPubkey = new PublicKey(vaultId);
+      
+      // Fetch vault account using Anchor (automatically deserializes)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vaultAccount = await (program.account as any).vault.fetch(vaultPubkey);
+      
+      if (!vaultAccount) {
         console.log(`⚠️ Vault not found: ${vaultId}`);
         return;
       }
       
-      // Parse the vault data (same parsing logic as fetchAllVaults)
-      const data = accountInfo.data;
-      const dataLength = data.length;
-      const isOldFormat = dataLength === 197;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const account = vaultAccount as any;
       
-      let off = 8; // Skip discriminator
-
-      const nftMint = new PublicKey(data.slice(off, off + 32));
-      off += 32;
-
-      const nftAssetId = new PublicKey(data.slice(off, off + 32));
-      off += 32;
-
-      const fractionMint = new PublicKey(data.slice(off, off + 32));
-      off += 32;
-
-      const totalSupplyBN = new anchor.BN(data.slice(off, off + 8), 'le');
-      off += 8;
-
-      const creator = new PublicKey(data.slice(off, off + 32));
-      off += 32;
-
-      const creationTimestamp = new anchor.BN(data.slice(off, off + 8), 'le', true);
-      off += 8;
-
-      const statusByte = data[off];
-      off += 1;
-
-      const reclaimTimestamp = new anchor.BN(data.slice(off, off + 8), 'le', true);
-      off += 8;
-
-      const twapPriceAtReclaim = new anchor.BN(data.slice(off, off + 8), 'le');
-      off += 8;
-
-      const totalCompensation = new anchor.BN(data.slice(off, off + 8), 'le');
-      off += 8;
-
-      const remainingCompensation = new anchor.BN(data.slice(off, off + 8), 'le');
-      off += 8;
-
-      off += 1; // bump
-
-      const minLpAgeSeconds = new anchor.BN(data.slice(off, off + 8), 'le', true);
-      off += 8;
-
-      const minReclaimPercentage = data[off];
-      off += 1;
-
-      const minLiquidityPercent = data[off];
-      off += 1;
-
-      const minVolumePercent30d = data[off];
-      off += 1;
-
-      let reclaimInitiator: PublicKey;
-      let reclaimInitiationTimestamp: anchor.BN;
-      let tokensInEscrow: anchor.BN;
-
-      if (isOldFormat) {
-        reclaimInitiator = PublicKey.default;
-        reclaimInitiationTimestamp = new anchor.BN(0);
-        tokensInEscrow = new anchor.BN(0);
-      } else {
-        reclaimInitiator = new PublicKey(data.slice(off, off + 32));
-        off += 32;
-        reclaimInitiationTimestamp = new anchor.BN(data.slice(off, off + 8), 'le', true);
-        off += 8;
-        tokensInEscrow = new anchor.BN(data.slice(off, off + 8), 'le');
-      }
-
+      // Helper to safely convert BN to number
       const safeToNumber = (bn: anchor.BN, divisor = 1): number => {
         return parseFloat(bn.toString()) / divisor;
       };
@@ -328,30 +209,35 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       const updatedVault: Vault = {
         id: vaultPubkey.toBase58(),
         publicKey: vaultPubkey.toBase58(),
-        nftMint: nftMint.toBase58(),
-        nftAssetId: nftAssetId.toBase58(),
+        nftMint: account.nftMint.toBase58(),
+        nftAssetId: account.nftAssetId.toBase58(),
         nftMetadata: {
           name: 'Loading...',
           symbol: '',
           uri: '',
           image: '/placeholder-nft.svg',
         },
-        fractionMint: fractionMint.toBase58(),
-        totalSupply: safeToNumber(totalSupplyBN, 1e9),
-        creator: creator.toBase58(),
-        creationTimestamp: safeToNumber(creationTimestamp, 1) * 1000,
-        status: statusByte as VaultStatus,
-        reclaimTimestamp: safeToNumber(reclaimTimestamp, 1) * 1000,
-        twapPriceAtReclaim: safeToNumber(twapPriceAtReclaim),
-        totalCompensation: safeToNumber(totalCompensation),
-        remainingCompensation: safeToNumber(remainingCompensation),
-        minLpAgeSeconds: safeToNumber(minLpAgeSeconds),
-        minReclaimPercentage,
-        minLiquidityPercent,
-        minVolumePercent30d,
-        reclaimInitiator: reclaimInitiator.toBase58(),
-        reclaimInitiationTimestamp: safeToNumber(reclaimInitiationTimestamp, 1) * 1000,
-        tokensInEscrow: safeToNumber(tokensInEscrow, 1e9),
+        fractionMint: account.fractionMint.toBase58(),
+        totalSupply: safeToNumber(account.totalSupply, 1e9),
+        creator: account.creator.toBase58(),
+        creationTimestamp: safeToNumber(account.creationTimestamp, 1) * 1000,
+        status: account.status.active ? VaultStatus.Active :
+                account.status.reclaimInitiated ? VaultStatus.ReclaimInitiated :
+                account.status.reclaimedFinalized ? VaultStatus.ReclaimedFinalized :
+                VaultStatus.Closed,
+        reclaimTimestamp: safeToNumber(account.reclaimTimestamp, 1) * 1000,
+        twapPriceAtReclaim: safeToNumber(account.twapPriceAtReclaim),
+        totalCompensation: safeToNumber(account.totalCompensation),
+        remainingCompensation: safeToNumber(account.remainingCompensation),
+        minLpAgeSeconds: safeToNumber(account.minLpAgeSeconds),
+        minReclaimPercentage: account.minReclaimPercentage,
+        minLiquidityPercent: account.minLiquidityPercent,
+        minVolumePercent30d: account.minVolumePercent30d,
+        reclaimInitiator: account.reclaimInitiator.equals(PublicKey.default) 
+          ? PublicKey.default.toBase58()
+          : account.reclaimInitiator.toBase58(),
+        reclaimInitiationTimestamp: safeToNumber(account.reclaimInitiationTimestamp, 1) * 1000,
+        tokensInEscrow: safeToNumber(account.tokensInEscrow, 1e9),
       };
 
       // Fetch metadata for this vault

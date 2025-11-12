@@ -24,7 +24,6 @@ const MPL_BUBBLEGUM_ID = new PublicKey('BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752sa
 const SPL_ACCOUNT_COMPRESSION_PROGRAM_ID = new PublicKey('cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK');
 const SPL_NOOP_PROGRAM_ID = new PublicKey('noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV');
 
-const VAULT_SEED = Buffer.from('vault');
 const COMPENSATION_ESCROW_SEED = Buffer.from('compensation_escrow');
 
 export async function POST(request: NextRequest) {
@@ -135,6 +134,7 @@ export async function POST(request: NextRequest) {
     // Create provider with minimal setup
     const provider = new anchor.AnchorProvider(
       connection,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       {} as any,
       { commitment: 'confirmed' }
     );
@@ -151,6 +151,7 @@ export async function POST(request: NextRequest) {
     console.log('📦 Proof accounts:', proofAccounts.length);
 
     // Build accounts object
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const accounts: any = {
       user: userPubkey,
       vault: vaultPubkey,
@@ -220,12 +221,13 @@ export async function POST(request: NextRequest) {
       message: 'Transaction built successfully',
     });
 
-  } catch (error: any) {
-    console.error('❌ Initialize reclaim API error:', error);
+  } catch (error) {
+    const err = error as Error;
+    console.error('❌ Initialize reclaim API error:', err);
     return NextResponse.json(
       { 
-        error: error.message || 'Failed to build transaction',
-        details: error.toString(),
+        error: err.message || 'Failed to build transaction',
+        details: err.toString(),
       },
       { status: 500 }
     );

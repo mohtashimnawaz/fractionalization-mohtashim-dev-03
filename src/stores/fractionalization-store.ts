@@ -17,7 +17,7 @@ const initialFormData: Partial<FractionalizationFormData> = {
   nftMint: '',
   totalSupply: '1000000',
   minLpAgeSeconds: '',
-  minReclaimPercent: '',
+  minReclaimPercentage: '',
   minLiquidityPercent: '',
   minVolumePercent30d: '',
 };

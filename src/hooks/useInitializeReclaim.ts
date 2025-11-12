@@ -5,7 +5,7 @@
 
 import { useCallback, useState } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { PublicKey, Transaction, TransactionMessage, VersionedTransaction } from '@solana/web3.js';
+import { VersionedTransaction } from '@solana/web3.js';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { useVaultStore } from '@/stores/useVaultStore';
@@ -163,11 +163,12 @@ export function useInitializeReclaim() {
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }, 2000);
 
-      } catch (error: any) {
-        console.error('❌ Initialize reclaim error:', error);
+      } catch (error) {
+        const err = error as Error;
+        console.error('❌ Initialize reclaim error:', err);
         toast.error('Failed to initialize reclaim', {
           id: loadingToast,
-          description: error.message || 'Please try again',
+          description: err.message || 'Please try again',
           duration: 5000,
         });
       } finally {
