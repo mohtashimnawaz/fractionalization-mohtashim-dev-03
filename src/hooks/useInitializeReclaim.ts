@@ -5,15 +5,30 @@
 
 import { useCallback, useState } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { VersionedTransaction } from '@solana/web3.js';
+import { 
+  TransactionInstruction, 
+  PublicKey, 
+  TransactionMessage, 
+  VersionedTransaction,
+  MessageV0,
+  AddressLookupTableProgram
+} from '@solana/web3.js';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { useVaultStore } from '@/stores/useVaultStore';
 import { getAssetWithProof } from '@/lib/helius';
+import {
+  getOrCreateReclaimALT,
+  storeALTAddress,
+  checkProofAddressesInALT,
+  getAddressLookupTableAccount,
+  createALTInstruction,
+  extendALTInstruction
+} from '@/lib/alt-manager';
 
 export function useInitializeReclaim() {
   const { connection } = useConnection();
-  const { publicKey, sendTransaction } = useWallet();
+  const { publicKey, signTransaction } = useWallet();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const { fetchVaultById } = useVaultStore();
@@ -45,8 +60,125 @@ export function useInitializeReclaim() {
           leafId: assetWithProof.compression.leaf_id,
         });
 
-        // Step 2: Build transaction via API
-        toast.loading('Building transaction...', { id: loadingToast });
+        // Step 2: Setup Address Lookup Table for proof accounts
+        toast.loading('Setting up Address Lookup Table...', { id: loadingToast });
+        
+        const proofPublicKeys = assetWithProof.proof.proof.map(p => new PublicKey(p));
+        const { altAddress, needsCreation } = await getOrCreateReclaimALT(connection, publicKey);
+
+        // Check if we need to add proof addresses to the ALT
+        const { allPresent, missingAddresses } = await checkProofAddressesInALT(
+          connection,
+          altAddress,
+          proofPublicKeys
+        );
+
+        // If ALT needs creation or updating, do it in separate transactions
+        if (needsCreation || !allPresent) {
+          toast.loading('Preparing Address Lookup Table...', { id: loadingToast });
+          console.log(`📋 ALT needs ${needsCreation ? 'creation' : 'updating'}`);
+          
+          if (!signTransaction) {
+            throw new Error('Wallet does not support transaction signing');
+          }
+          
+          // Step 1: Create ALT if needed
+          if (needsCreation) {
+            const slot = await connection.getSlot();
+            // Use a slot in the near future to ensure activation
+            const [createIx] = createALTInstruction(publicKey, slot);
+
+            const { blockhash: createBlockhash } = await connection.getLatestBlockhash();
+            const createMessage = new TransactionMessage({
+              payerKey: publicKey,
+              recentBlockhash: createBlockhash,
+              instructions: [createIx],
+            }).compileToLegacyMessage();
+
+            const createTx = new VersionedTransaction(createMessage);
+            const signedCreateTx = await signTransaction(createTx);
+            const createSig = await connection.sendRawTransaction(signedCreateTx.serialize());
+            
+            console.log('📤 ALT create transaction sent:', createSig);
+            
+            toast.loading('Confirming ALT creation...', { id: loadingToast });
+            await connection.confirmTransaction(createSig, 'confirmed');
+            
+            // Wait for the ALT to be fully activated and indexed by RPC
+            // Need to wait for the slot to advance past the creation slot
+            console.log('⏳ Waiting for ALT activation (slot advancement)...');
+            let currentSlot = await connection.getSlot();
+            while (currentSlot <= slot) {
+              await new Promise(resolve => setTimeout(resolve, 400)); // Wait 400ms per slot
+              currentSlot = await connection.getSlot();
+              console.log(`Current slot: ${currentSlot}, creation slot: ${slot}`);
+            }
+            
+            // Now wait for the account to be indexed by the RPC
+            console.log('⏳ Waiting for ALT to be indexed by RPC...');
+            let retries = 0;
+            const maxRetries = 10;
+            while (retries < maxRetries) {
+              const altAccountInfo = await connection.getAccountInfo(altAddress);
+              if (altAccountInfo) {
+                console.log('✅ ALT account indexed, owner:', altAccountInfo.owner.toBase58());
+                break;
+              }
+              retries++;
+              console.log(`Retry ${retries}/${maxRetries}...`);
+              await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between retries
+            }
+            
+            if (retries >= maxRetries) {
+              throw new Error('ALT creation timed out. Please try again.');
+            }
+            
+            storeALTAddress(altAddress);
+            console.log('✅ ALT created and activated at slot', currentSlot);
+          }
+          
+          // Step 2: Extend ALT with proof addresses if needed
+          if (missingAddresses.length > 0) {
+            toast.loading(`Adding ${missingAddresses.length} addresses to ALT...`, { id: loadingToast });
+            
+            // Verify the ALT exists on-chain before extending
+            console.log('🔍 Verifying ALT exists before extension...');
+            const altAccountInfo = await connection.getAccountInfo(altAddress);
+            if (!altAccountInfo) {
+              console.error('❌ ALT account does not exist on-chain, clearing storage and recreating...');
+              localStorage.removeItem('reclaim_alt_address');
+              toast.error('Address Lookup Table is invalid. Please try Initialize Reclaim again.', { id: loadingToast });
+              return;
+            }
+            console.log('✅ ALT account exists, owner:', altAccountInfo.owner.toBase58());
+            
+            // Add addresses in batches of 30 (max per instruction)
+            for (let i = 0; i < missingAddresses.length; i += 30) {
+              const batch = missingAddresses.slice(i, i + 30);
+              const extendIx = extendALTInstruction(altAddress, publicKey, publicKey, batch);
+
+              const { blockhash: extendBlockhash } = await connection.getLatestBlockhash();
+              const extendMessage = new TransactionMessage({
+                payerKey: publicKey,
+                recentBlockhash: extendBlockhash,
+                instructions: [extendIx],
+              }).compileToLegacyMessage();
+
+              const extendTx = new VersionedTransaction(extendMessage);
+              const signedExtendTx = await signTransaction(extendTx);
+              const extendSig = await connection.sendRawTransaction(signedExtendTx.serialize());
+              
+              console.log(`📤 ALT extend transaction ${i / 30 + 1} sent:`, extendSig);
+              
+              await connection.confirmTransaction(extendSig, 'confirmed');
+            }
+            
+            console.log('✅ ALT extended with all addresses');
+          }
+        }
+
+        // Step 3: Build main transaction via API
+        toast.loading('Building reclaim transaction...', { id: loadingToast });
         
         const response = await fetch('/api/initialize-reclaim', {
           method: 'POST',
@@ -71,17 +203,80 @@ export function useInitializeReclaim() {
           throw new Error(error.error || 'Failed to build transaction');
         }
 
-        const { transaction: serializedTx } = await response.json();
+        const { instructions: instructionsData, blockhash, feePayer } = await response.json();
 
-        // Step 3: Deserialize and send transaction
-        toast.loading('Waiting for signature...', { id: loadingToast });
+        // Step 3: Build transaction client-side from instruction data
+        toast.loading('Building transaction...', { id: loadingToast });
         
-        const txBuffer = Buffer.from(serializedTx, 'base64');
-        const tx = VersionedTransaction.deserialize(txBuffer);
+        // Convert all instructions from JSON to TransactionInstruction objects
+        const instructions = instructionsData.map((ixData: { 
+          programId: string; 
+          data: string; 
+          keys: { pubkey: string; isSigner: boolean; isWritable: boolean }[] 
+        }) => new TransactionInstruction({
+          programId: new PublicKey(ixData.programId),
+          data: Buffer.from(ixData.data, 'base64'),
+          keys: ixData.keys.map(k => ({
+            pubkey: new PublicKey(k.pubkey),
+            isSigner: k.isSigner,
+            isWritable: k.isWritable,
+          })),
+        }));
+
+        console.log(`📦 Building transaction with ${instructions.length} instructions`);
+
+        // Count total unique accounts
+        const allAccounts = new Set<string>();
+        instructions.forEach((ix: TransactionInstruction) => {
+          ix.keys.forEach((k: { pubkey: PublicKey }) => allAccounts.add(k.pubkey.toString()));
+        });
+        console.log(`📊 Total unique accounts before ALT: ${allAccounts.size}`);
+
+        // Fetch the ALT account to use in the transaction
+        toast.loading('Fetching Address Lookup Table...', { id: loadingToast });
+        const altAccount = await getAddressLookupTableAccount(connection, altAddress);
         
-        console.log('📝 Sending transaction...');
-        const signature = await sendTransaction(tx, connection, {
-          skipPreflight: false,
+        if (!altAccount) {
+          throw new Error('Failed to fetch Address Lookup Table. Please try again.');
+        }
+
+        console.log(`📋 ALT contains ${altAccount.state.addresses.length} addresses`);
+
+        // Build VersionedTransaction with ALT
+        let versionedTransaction;
+        
+        try {
+          const messageV0 = new TransactionMessage({
+            payerKey: new PublicKey(feePayer),
+            recentBlockhash: blockhash,
+            instructions,
+          }).compileToV0Message([altAccount]); // Pass ALT here!
+
+          versionedTransaction = new VersionedTransaction(messageV0);
+          
+          const txSize = versionedTransaction.serialize().length;
+          console.log(`📏 Transaction size with ALT: ${txSize} bytes`);
+          
+          if (txSize > 1232) {
+            console.warn(`⚠️ Transaction still large: ${txSize} bytes`);
+          }
+        } catch (compileError) {
+          console.error('❌ Transaction compilation error:', compileError);
+          throw new Error(
+            'Failed to build transaction with Address Lookup Table. Please try again.'
+          );
+        }
+        
+        console.log('📝 Signing transaction...');
+        if (!signTransaction) {
+          throw new Error('Wallet does not support transaction signing');
+        }
+        
+        const signedTx = await signTransaction(versionedTransaction);
+        
+        console.log('📤 Sending signed transaction...');
+        const signature = await connection.sendRawTransaction(signedTx.serialize(), {
+          skipPreflight: true,  // Skip preflight to avoid any simulation overhead
           maxRetries: 3,
         });
 
@@ -175,7 +370,7 @@ export function useInitializeReclaim() {
         setIsLoading(false);
       }
     },
-    [publicKey, connection, sendTransaction, router, fetchVaultById]
+    [publicKey, connection, signTransaction, router, fetchVaultById]
   );
 
   return {

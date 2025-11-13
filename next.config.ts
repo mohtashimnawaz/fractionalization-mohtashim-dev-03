@@ -113,6 +113,29 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  
+  webpack: (config, { isServer }) => {
+    // Suppress bigint-buffer warning
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+        'pino-pretty': false,
+      };
+    }
+    
+    // Ignore bigint-buffer native bindings warning and pino-pretty optional dependency
+    config.ignoreWarnings = [
+      { module: /node_modules\/bigint-buffer/ },
+      { module: /node_modules\/pino/ },
+      /Failed to load bindings/,
+      /Can't resolve 'pino-pretty'/,
+    ];
+    
+    return config;
+  },
 }
 
 export default nextConfig

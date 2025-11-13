@@ -48,6 +48,30 @@ export async function POST(request: NextRequest) {
       nftAssetId: nftAssetId.slice(0, 8) + '...',
       userPublicKey: userPublicKey.slice(0, 8) + '...',
       proofLength: proofPath?.length,
+      rootType: typeof root,
+      rootIsArray: Array.isArray(root),
+      rootLength: root?.length,
+      dataHashType: typeof dataHash,
+      dataHashLength: dataHash?.length,
+      creatorHashType: typeof creatorHash,
+      creatorHashLength: creatorHash?.length,
+      nonceType: typeof nonce,
+      nonce,
+      index,
+    });
+
+    // Ensure arrays are exactly 32 bytes (slice if needed)
+    // Keep them as plain arrays - no Uint8Array conversion to avoid encoding issues
+    const rootArray = Array.isArray(root) ? (root.length > 32 ? root.slice(root.length - 32) : root) : root;
+    const dataHashArray = Array.isArray(dataHash) ? (dataHash.length > 32 ? dataHash.slice(dataHash.length - 32) : dataHash) : dataHash;
+    const creatorHashArray = Array.isArray(creatorHash) ? (creatorHash.length > 32 ? creatorHash.slice(creatorHash.length - 32) : creatorHash) : creatorHash;
+
+    console.log('✂️ Arrays after normalization:', {
+      rootLength: rootArray.length,
+      dataHashLength: dataHashArray.length,
+      creatorHashLength: creatorHashArray.length,
+      rootSample: rootArray.slice(0, 4),
+      dataHashSample: dataHashArray.slice(0, 4),
     });
 
     // Validate inputs
@@ -163,62 +187,70 @@ export async function POST(request: NextRequest) {
       compressionProgram: SPL_ACCOUNT_COMPRESSION_PROGRAM_ID,
       merkleTree: merkleTreePubkey,
       treeAuthority,
+      leafDelegate: leafDelegate && leafDelegate !== 'null' ? new PublicKey(leafDelegate) : userPubkey, // Use user if no delegate
       logWrapper: SPL_NOOP_PROGRAM_ID,
       tokenProgram: TOKEN_PROGRAM_ID,
       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
       systemProgram: anchor.web3.SystemProgram.programId,
     };
 
-    // Add leafDelegate only if it exists
-    if (leafDelegate) {
-      accounts.leafDelegate = new PublicKey(leafDelegate);
-    }
+    console.log('🔧 Building instruction with params:', {
+      nftAssetId: nftAssetIdPubkey.toBase58(),
+      rootLength: rootArray.length,
+      dataHashLength: dataHashArray.length,
+      creatorHashLength: creatorHashArray.length,
+      nonce,
+      index,
+    });
 
     // Build the instruction
-    const ix = await program.methods
-      .initializeReclaimV1(
-        nftAssetIdPubkey,
-        Array.from(new Uint8Array(root)),
-        Array.from(new Uint8Array(dataHash)),
-        Array.from(new Uint8Array(creatorHash)),
-        new anchor.BN(nonce),
-        index
-      )
-      .accounts(accounts)
-      .remainingAccounts(proofAccounts)
-      .instruction();
+    let ix;
+    try {
+      ix = await program.methods
+        .initializeReclaimV1(
+          nftAssetIdPubkey,
+          rootArray, // Plain number array, already 32 bytes
+          dataHashArray, // Plain number array, already 32 bytes
+          creatorHashArray, // Plain number array, already 32 bytes
+          new anchor.BN(nonce),
+          index
+        )
+        .accounts(accounts)
+        .remainingAccounts(proofAccounts)
+        .instruction();
 
-    console.log('✅ Instruction built');
-
-    // Add compute budget instructions
-    const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
-      units: 400_000,
-    });
-
-    const computePriceIx = ComputeBudgetProgram.setComputeUnitPrice({
-      microLamports: 1,
-    });
+      console.log('✅ Instruction built successfully');
+    } catch (buildError) {
+      console.error('❌ Instruction build error:', buildError);
+      console.error('Error details:', {
+        message: buildError instanceof Error ? buildError.message : String(buildError),
+        stack: buildError instanceof Error ? buildError.stack : undefined,
+      });
+      throw buildError;
+    }
 
     // Get latest blockhash
-    const { blockhash } = await connection.getLatestBlockhash('confirmed');
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
 
-    // Build versioned transaction
-    const messageV0 = new TransactionMessage({
-      payerKey: userPubkey,
-      recentBlockhash: blockhash,
-      instructions: [computeBudgetIx, computePriceIx, ix],
-    }).compileToV0Message();
+    console.log('🔧 Preparing transaction data for client-side building');
 
-    const versionedTx = new VersionedTransaction(messageV0);
-
-    // Serialize transaction
-    const serializedTx = Buffer.from(versionedTx.serialize()).toString('base64');
-
-    console.log('✅ Transaction built and serialized');
-
+    // Return just the main instruction (no compute budget to reduce size)
     return NextResponse.json({
-      transaction: serializedTx,
-      message: 'Transaction built successfully',
+      instructions: [
+        {
+          programId: PROGRAM_ID.toBase58(),
+          data: Buffer.from(ix.data).toString('base64'),
+          keys: ix.keys.map(k => ({
+            pubkey: k.pubkey.toBase58(),
+            isSigner: k.isSigner,
+            isWritable: k.isWritable,
+          })),
+        },
+      ],
+      blockhash,
+      lastValidBlockHeight,
+      feePayer: userPubkey.toBase58(),
+      message: 'Instructions built successfully',
     });
 
   } catch (error) {

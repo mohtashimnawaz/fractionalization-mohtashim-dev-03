@@ -8,5 +8,13 @@
   ],
   "routes": [
     { "src": "/(.*)", "dest": "/$1" }
-  ]
+  ],
+  "env": {
+    "SUPPRESS_BIGINT_WARNING": "1"
+  },
+  "build": {
+    "env": {
+      "SUPPRESS_BIGINT_WARNING": "1"
+    }
+  }
 }

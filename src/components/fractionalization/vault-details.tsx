@@ -5,7 +5,8 @@
 'use client';
 
 import { useVaultDetails, useUserBalance } from '@/hooks';
-import { useWallet } from '@/components/solana/solana-provider';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { useVaultStore } from '@/stores/useVaultStore';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,12 +28,14 @@ const statusColors: Record<VaultStatus, string> = {
 };
 
 export function VaultDetails({ vaultId }: VaultDetailsProps) {
-  const { account } = useWallet();
+  const { publicKey } = useWallet();
   const { data: vault, isLoading, error } = useVaultDetails(vaultId);
-  const { data: balance } = useUserBalance(
-    account?.address,
-    vault?.fractionMint
-  );
+  
+  // Get user positions from vault store instead of useUserBalance
+  const userPositions = useVaultStore(state => state.userPositions);
+  
+  // Get the balance for this specific vault's fraction mint
+  const userBalance = vault?.fractionMint ? userPositions[vault.fractionMint] : undefined;
 
   if (isLoading) {
     return (
@@ -55,11 +58,26 @@ export function VaultDetails({ vaultId }: VaultDetailsProps) {
     );
   }
 
-  const userSharePercentage = balance
-    ? (balance.balance / vault.totalSupply) * 100
+  const userSharePercentage = userBalance
+    ? (userBalance / vault.totalSupply) * 100
     : 0;
 
   const meetsReclaimThreshold = userSharePercentage >= vault.minReclaimPercentage;
+
+  // Debug logging
+  console.log('🔍 VaultDetails Debug:', {
+    vaultId,
+    walletConnected: !!publicKey,
+    walletAddress: publicKey?.toBase58(),
+    fractionMint: vault.fractionMint,
+    hasBalance: !!userBalance,
+    balance: userBalance,
+    userSharePercentage,
+    minRequired: vault.minReclaimPercentage,
+    meetsThreshold: meetsReclaimThreshold,
+    vaultStatus: vault.status,
+    VaultStatusActive: VaultStatus.Active,
+  });
 
   return (
     <div className="space-y-6">
@@ -143,7 +161,7 @@ export function VaultDetails({ vaultId }: VaultDetailsProps) {
           </Card>
 
           {/* User Position */}
-          {account && balance && (
+          {publicKey && userBalance && (
             <Card>
               <CardHeader>
                 <CardTitle>Your Position</CardTitle>
@@ -152,7 +170,7 @@ export function VaultDetails({ vaultId }: VaultDetailsProps) {
                 <div className="space-y-3">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Your Balance</span>
-                    <span className="font-medium">{balance.balance.toLocaleString()}</span>
+                    <span className="font-medium">{userBalance.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Your Share</span>
@@ -167,10 +185,10 @@ export function VaultDetails({ vaultId }: VaultDetailsProps) {
                 </div>
                 <div className="pt-4 space-y-2">
                   {/* Initialize Reclaim Button - Only show if Active and meets threshold */}
-                  {vault.status === VaultStatus.Active && meetsReclaimThreshold && balance && (
+                  {vault.status === VaultStatus.Active && meetsReclaimThreshold && userBalance && (
                     <InitializeReclaimButton 
                       vault={vault}
-                      userBalance={balance.balance}
+                      userBalance={userBalance}
                     />
                   )}
 
@@ -200,6 +218,40 @@ export function VaultDetails({ vaultId }: VaultDetailsProps) {
                     </Button>
                   </Link>
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Reclaim Actions - Show even without balance */}
+          {publicKey && !userBalance && vault.status === VaultStatus.Active && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Reclaim Actions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-4">
+                  You need to own at least {vault.minReclaimPercentage}% of the fraction tokens to initialize reclaim.
+                </p>
+                <Button className="w-full" disabled>
+                  No Tokens Owned
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Connect Wallet Prompt */}
+          {!publicKey && vault.status === VaultStatus.Active && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Reclaim Actions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Connect your wallet to see your position and reclaim options.
+                </p>
+                <Button className="w-full" disabled>
+                  Connect Wallet to Reclaim
+                </Button>
               </CardContent>
             </Card>
           )}

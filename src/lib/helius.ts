@@ -11,26 +11,15 @@
  * 
  * You MUST:
  * 1. Create a real cNFT on Solana devnet
- * 2. Add HELIUS_API_KEY to .env
+ * 2. Add HELIUS_API_KEY to .env (server-side only, NOT NEXT_PUBLIC_)
  * 3. Connect wallet that owns the cNFT
  * 
  * See CNFT_SETUP.md for instructions.
+ * 
+ * Security Note: API calls are proxied through /api/helius-rpc to keep the API key secure
  */
 
 import { PublicKey } from '@solana/web3.js';
-
-// Helius API configuration
-const HELIUS_API_KEY = process.env.HELIUS_API_KEY || '';
-const HELIUS_RPC_URL = `https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
-
-if (!HELIUS_API_KEY) {
-  console.warn(
-    '⚠️ HELIUS_API_KEY not set. Please add it to .env'
-  );
-} else {
-  console.log('✅ Helius API key loaded:', HELIUS_API_KEY.substring(0, 8) + '...' + HELIUS_API_KEY.substring(HELIUS_API_KEY.length - 4));
-  console.log('📡 Helius RPC URL configured');
-}
 
 /**
  * Compressed NFT metadata structure from Helius DAS API
@@ -136,17 +125,16 @@ export interface CompressedNFT {
 }
 
 /**
- * Call Helius DAS API
+ * Call Helius DAS API through the secure server-side proxy
+ * This keeps the API key secure and never exposes it to the client
+ * Includes automatic retry logic with exponential backoff for rate limiting (429 errors)
  */
-async function callDASApi<T>(method: string, params: unknown): Promise<T> {
-  if (!HELIUS_API_KEY) {
-    throw new Error(
-      'Helius API key not configured. Please add HELIUS_API_KEY to .env'
-    );
-  }
-
+async function callDASApi<T>(method: string, params: unknown, retryCount = 0): Promise<T> {
+  const maxRetries = 3;
+  const baseDelay = 1000; // Start with 1 second
+  
   try {
-    const response = await fetch(HELIUS_RPC_URL, {
+    const response = await fetch('/api/helius-rpc', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -158,6 +146,19 @@ async function callDASApi<T>(method: string, params: unknown): Promise<T> {
         params,
       }),
     });
+
+    // Handle rate limiting (429)
+    if (response.status === 429) {
+      if (retryCount >= maxRetries) {
+        throw new Error(`Helius API rate limit exceeded after ${maxRetries} retries`);
+      }
+      
+      const delay = baseDelay * Math.pow(2, retryCount); // Exponential backoff
+      console.warn(`⚠️  Rate limited by Helius API. Retrying after ${delay}ms (attempt ${retryCount + 1}/${maxRetries})...`);
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return callDASApi<T>(method, params, retryCount + 1);
+    }
 
     if (!response.ok) {
       throw new Error(`Helius API error: ${response.status} ${response.statusText}`);
@@ -172,10 +173,9 @@ async function callDASApi<T>(method: string, params: unknown): Promise<T> {
     return data.result;
   } catch (error) {
     if (error instanceof TypeError && error.message === 'Failed to fetch') {
-      console.error('❌ Network error connecting to Helius API');
-      console.error('   URL:', HELIUS_RPC_URL.replace(HELIUS_API_KEY, '***'));
-      console.error('   This might be a CORS issue, network problem, or invalid API key');
-      throw new Error('Failed to connect to Helius API. Check your internet connection and API key.');
+      console.error('❌ Network error connecting to Helius API via proxy');
+      console.error('   This might be a network problem or the proxy route is not working');
+      throw new Error('Failed to connect to Helius API. Check your internet connection.');
     }
     throw error;
   }
@@ -267,10 +267,12 @@ export function proofToAccounts(proof: AssetProof): PublicKey[] {
 }
 
 /**
- * Get Helius RPC endpoint URL
+ * Get Helius RPC endpoint URL (for server-side use only)
+ * Client-side code should use the /api/helius-rpc proxy
  */
 export function getHeliusRpcUrl(): string {
-  return HELIUS_RPC_URL;
+  const HELIUS_API_KEY = process.env.HELIUS_API_KEY || '';
+  return `https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 }
 
 /**
@@ -316,10 +318,22 @@ export async function getAssetWithProof(assetId: string): Promise<AssetWithProof
       getAssetProof(assetId),
     ]);
 
-    // Convert proof strings to Uint8Arrays
-    const root = Uint8Array.from(Buffer.from(proof.root, 'base64'));
-    const dataHash = Uint8Array.from(Buffer.from(asset.compression.data_hash, 'base64'));
-    const creatorHash = Uint8Array.from(Buffer.from(asset.compression.creator_hash, 'base64'));
+    // Convert proof strings to Uint8Arrays (must be exactly 32 bytes)
+    // Helius sometimes returns 33 bytes with a version prefix, so we take the last 32 bytes
+    const rootBuffer = Buffer.from(proof.root, 'base64');
+    const dataHashBuffer = Buffer.from(asset.compression.data_hash, 'base64');
+    const creatorHashBuffer = Buffer.from(asset.compression.creator_hash, 'base64');
+
+    // Ensure exactly 32 bytes by taking the last 32 bytes (removes any prefix)
+    const root = new Uint8Array(rootBuffer.slice(-32));
+    const dataHash = new Uint8Array(dataHashBuffer.slice(-32));
+    const creatorHash = new Uint8Array(creatorHashBuffer.slice(-32));
+
+    console.log('✅ Asset proof data lengths after normalization:', {
+      rootLength: root.length,
+      dataHashLength: dataHash.length,
+      creatorHashLength: creatorHash.length,
+    });
 
     return {
       asset,

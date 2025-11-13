@@ -16,6 +16,10 @@ interface CNFTImageProps {
 
 // Helper to convert IPFS URLs
 function convertIpfsUrl(url: string): string {
+  if (!url || typeof url !== 'string') {
+    return '';
+  }
+  
   if (url.startsWith('ipfs://')) {
     return url.replace('ipfs://', 'https://gateway.pinata.cloud/ipfs/');
   }
@@ -23,6 +27,20 @@ function convertIpfsUrl(url: string): string {
     return `https://gateway.pinata.cloud/ipfs/${url}`;
   }
   return url;
+}
+
+// Helper to validate URL
+function isValidUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') {
+    return false;
+  }
+  
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function CNFTImage({ imageUrl, name, className }: CNFTImageProps) {
@@ -48,8 +66,12 @@ export function CNFTImage({ imageUrl, name, className }: CNFTImageProps) {
         const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i;
         if (imageUrl.match(imageExtensions)) {
           // Direct image URL - use it
-          if (isMounted) {
-            setResolvedImage(convertIpfsUrl(imageUrl));
+          const convertedUrl = convertIpfsUrl(imageUrl);
+          if (isMounted && isValidUrl(convertedUrl)) {
+            setResolvedImage(convertedUrl);
+            setIsLoading(false);
+          } else if (isMounted) {
+            setError(true);
             setIsLoading(false);
           }
           return;
@@ -87,22 +109,29 @@ export function CNFTImage({ imageUrl, name, className }: CNFTImageProps) {
                 
                 if (isMounted && metadata.image) {
                   const finalImageUrl = convertIpfsUrl(metadata.image);
-                  setResolvedImage(finalImageUrl);
-                  setIsLoading(false);
-                  return;
+                  if (isValidUrl(finalImageUrl)) {
+                    setResolvedImage(finalImageUrl);
+                    setIsLoading(false);
+                    return;
+                  }
                 }
                 
                 // Check properties.files as fallback
                 if (isMounted && metadata.properties?.files?.[0]?.uri) {
                   const finalImageUrl = convertIpfsUrl(metadata.properties.files[0].uri);
-                  setResolvedImage(finalImageUrl);
-                  setIsLoading(false);
-                  return;
+                  if (isValidUrl(finalImageUrl)) {
+                    setResolvedImage(finalImageUrl);
+                    setIsLoading(false);
+                    return;
+                  }
                 }
               } catch {
                 // Not valid JSON, might be an image - try displaying it directly
-                if (isMounted) {
+                if (isMounted && isValidUrl(metadataUrl)) {
                   setResolvedImage(metadataUrl);
+                  setIsLoading(false);
+                } else if (isMounted) {
+                  setError(true);
                   setIsLoading(false);
                 }
                 return;
@@ -110,8 +139,11 @@ export function CNFTImage({ imageUrl, name, className }: CNFTImageProps) {
             }
             
             // If we get here, treat the URL as a direct image
-            if (isMounted) {
+            if (isMounted && isValidUrl(metadataUrl)) {
               setResolvedImage(metadataUrl);
+              setIsLoading(false);
+            } else if (isMounted) {
+              setError(true);
               setIsLoading(false);
             }
             return;
@@ -126,8 +158,12 @@ export function CNFTImage({ imageUrl, name, className }: CNFTImageProps) {
         }
         
         // Otherwise assume it's a direct image URL
-        if (isMounted) {
-          setResolvedImage(convertIpfsUrl(imageUrl));
+        const convertedUrl = convertIpfsUrl(imageUrl);
+        if (isMounted && isValidUrl(convertedUrl)) {
+          setResolvedImage(convertedUrl);
+          setIsLoading(false);
+        } else if (isMounted) {
+          setError(true);
           setIsLoading(false);
         }
       } catch {
@@ -154,7 +190,7 @@ export function CNFTImage({ imageUrl, name, className }: CNFTImageProps) {
     );
   }
 
-  if (error || !resolvedImage) {
+  if (error || !resolvedImage || !isValidUrl(resolvedImage)) {
     return (
       <Image
         src="/placeholder-nft.svg"

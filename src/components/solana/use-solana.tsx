@@ -1,6 +1,6 @@
 import { useWalletUi } from '@wallet-ui/react'
 import { useWalletUiGill } from '@wallet-ui/react-gill'
-import { VersionedTransaction } from '@solana/web3.js'
+import { VersionedTransaction, PublicKey } from '@solana/web3.js'
 
 /**
  * Custom hook to abstract Wallet UI and related functionality from your app.
@@ -10,6 +10,19 @@ import { VersionedTransaction } from '@solana/web3.js'
 export function useSolana() {
   const walletUi = useWalletUi()
   const client = useWalletUiGill()
+
+  // Create publicKey for compatibility with existing code
+  // Debug logging (only in development)
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🔑 useSolana - wallet info:', {
+      connected: walletUi.connected,
+      hasAccount: !!walletUi.account,
+      account: walletUi.account,
+      accountAddress: walletUi.account?.address,
+    });
+  }
+
+  const publicKey = walletUi.account?.address ? new PublicKey(walletUi.account.address) : null;
 
   // Expose signTransaction method
   // Note: This is a simplified version that just returns the transaction
@@ -58,6 +71,7 @@ export function useSolana() {
   return {
     ...walletUi,
     client,
+    publicKey,
     signTransaction,
     sendAndConfirmTransaction,
   }

@@ -18,7 +18,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, AlertTriangle, Lock, Zap } from 'lucide-react';
 import { Vault } from '@/types';
-import { useInitializeReclaim } from '@/hooks/useInitializeReclaim';
+import { useInitializeReclaimWithALT as useInitializeReclaim } from '@/hooks/useInitializeReclaimWithALT';
 import { Badge } from '@/components/ui/badge';
 
 interface InitializeReclaimButtonProps {
