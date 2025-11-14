@@ -51,6 +51,7 @@ export function VaultExplorer() {
   const getVaultsByStatus = useVaultStore(state => state.getVaultsByStatus);
   const invalidateCache = useVaultStore(state => state.invalidateCache);
   const isCacheValid = useVaultStore(state => state.isCacheValid);
+  const fetchMetadataForVaults = useVaultStore(state => state.fetchMetadataForVaults);
 
   // Fetch vaults on mount (uses cached data if valid)
   useEffect(() => {
@@ -134,6 +135,16 @@ export function VaultExplorer() {
 
   // Apply display limit
   const displayedVaults = vaultsWithPositions.slice(0, displayLimit);
+
+  // Fetch metadata for currently displayed vaults (on-demand)
+  useEffect(() => {
+    if (displayedVaults.length > 0) {
+      const vaultIds = displayedVaults.map(v => v.id);
+      fetchMetadataForVaults(vaultIds).catch(err => {
+        console.error('Failed to fetch metadata:', err);
+      });
+    }
+  }, [displayLimit, filteredVaults.length, fetchMetadataForVaults]); // Re-fetch when display changes
 
   const hasMore = displayLimit < filteredVaults.length;
   const isInitialLoad = isLoading && vaults.length === 0;

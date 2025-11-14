@@ -16,11 +16,13 @@ interface VaultStore {
   error: string | null;
   lastFetchTimestamp: number;
   userPositions: Record<string, number>; // fractionMint -> balance
+  metadataCache: Record<string, Vault['nftMetadata']>; // nftAssetId -> metadata
   
   // Actions
   fetchAllVaults: () => Promise<void>;
   fetchVaultsIfStale: () => Promise<void>;
   fetchVaultById: (vaultId: string) => Promise<void>;
+  fetchMetadataForVaults: (vaultIds: string[]) => Promise<void>; // NEW: on-demand metadata
   fetchUserPositions: (userWallet: string) => Promise<void>;
   getVaultsByStatus: (status?: VaultStatus) => Vault[];
   getLatestVaults: (limit: number) => Vault[];
@@ -34,6 +36,31 @@ const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
 const PROGRAM_ID = new PublicKey(idl.address);
 
+// Helper function to extract image URL from Helius asset
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const extractImageUrl = (asset: any): string => {
+  let imageUrl = '';
+  
+  if (asset.content?.files && asset.content.files.length > 0) {
+    const imageFile = asset.content.files.find((file: { uri?: string; mime?: string }) => 
+      file.mime?.startsWith('image/') || file.uri?.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)
+    );
+    if (imageFile?.uri) {
+      imageUrl = imageFile.uri;
+    }
+  }
+  
+  if (!imageUrl && asset.content?.links?.image) {
+    imageUrl = asset.content.links.image;
+  }
+  
+  if (!imageUrl && asset.content?.json_uri) {
+    imageUrl = asset.content.json_uri;
+  }
+  
+  return imageUrl || '/placeholder-nft.svg';
+};
+
 export const useVaultStore = create<VaultStore>((set, get) => ({
   // Initial state
   vaults: [],
@@ -41,6 +68,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
   error: null,
   lastFetchTimestamp: 0,
   userPositions: {},
+  metadataCache: {},
 
   // Fetch all vaults from the program
   fetchAllVaults: async () => {
@@ -130,8 +158,13 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       // Sort by creation timestamp (newest first)
       const sortedVaults = parsedVaults.sort((a, b) => b.creationTimestamp - a.creationTimestamp);
 
-      // Fetch metadata for all vaults
-      await fetchMetadataForVaults(sortedVaults);
+      // Apply cached metadata if available
+      const { metadataCache } = get();
+      sortedVaults.forEach(vault => {
+        if (metadataCache[vault.nftAssetId]) {
+          vault.nftMetadata = metadataCache[vault.nftAssetId];
+        }
+      });
 
       set({ 
         vaults: sortedVaults, 
@@ -139,7 +172,7 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         lastFetchTimestamp: Date.now() 
       });
 
-      console.log(`✅ Loaded ${sortedVaults.length} vaults into store`);
+      console.log(`✅ Loaded ${sortedVaults.length} vaults into store (instant - no metadata fetch)`);
     } catch (error) {
       console.error('Error fetching vaults:', error);
       set({ error: (error as Error).message, isLoading: false });
@@ -240,8 +273,11 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
         tokensInEscrow: safeToNumber(account.tokensInEscrow, 1e9),
       };
 
-      // Fetch metadata for this vault
-      await fetchMetadataForVaults([updatedVault]);
+      // Apply cached metadata if available
+      const { metadataCache } = get();
+      if (metadataCache[updatedVault.nftAssetId]) {
+        updatedVault.nftMetadata = metadataCache[updatedVault.nftAssetId];
+      }
 
       // Update the vault in the store
       const { vaults } = get();
@@ -263,6 +299,81 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
       }
     } catch (error) {
       console.error(`Error fetching vault ${vaultId}:`, error);
+    }
+  },
+
+  // Fetch metadata for specific vaults (on-demand)
+  fetchMetadataForVaults: async (vaultIds: string[]) => {
+    const { vaults, metadataCache } = get();
+    
+    // Filter out vaults that already have metadata cached
+    const vaultsToFetch = vaults.filter(v => 
+      vaultIds.includes(v.id) && !metadataCache[v.nftAssetId]
+    );
+
+    if (vaultsToFetch.length === 0) {
+      console.log('✨ All requested metadata already cached');
+      return;
+    }
+
+    console.log(`📡 Fetching metadata for ${vaultsToFetch.length} vaults...`);
+
+    try {
+      // Fetch in batches of 5 with 200ms delay
+      const BATCH_SIZE = 5;
+      for (let i = 0; i < vaultsToFetch.length; i += BATCH_SIZE) {
+        const batch = vaultsToFetch.slice(i, i + BATCH_SIZE);
+        
+        await Promise.all(
+          batch.map(async (vault) => {
+            try {
+              const response = await fetch('/api/helius-rpc', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: 'vault-metadata',
+                  method: 'getAsset',
+                  params: { id: vault.nftAssetId },
+                }),
+              });
+
+              const { result } = await response.json();
+
+              if (result) {
+                const metadata = {
+                  name: result.content?.metadata?.name || 'Unknown NFT',
+                  symbol: result.content?.metadata?.symbol || '',
+                  uri: result.content?.json_uri || '',
+                  image: extractImageUrl(result),
+                };
+
+                // Update metadata cache
+                set((state) => ({
+                  metadataCache: {
+                    ...state.metadataCache,
+                    [vault.nftAssetId]: metadata,
+                  },
+                  vaults: state.vaults.map(v => 
+                    v.id === vault.id ? { ...v, nftMetadata: metadata } : v
+                  ),
+                }));
+              }
+            } catch (error) {
+              console.error(`Failed to fetch metadata for ${vault.nftAssetId}:`, error);
+            }
+          })
+        );
+
+        // Small delay between batches
+        if (i + BATCH_SIZE < vaultsToFetch.length) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      }
+
+      console.log(`✅ Fetched metadata for ${vaultsToFetch.length} vaults`);
+    } catch (error) {
+      console.error('Error fetching metadata:', error);
     }
   },
 
@@ -366,73 +477,3 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     return cacheAge < CACHE_DURATION_MS;
   },
 }));
-
-// Helper function to fetch metadata for vaults
-async function fetchMetadataForVaults(vaults: Vault[]) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const extractImageUrl = (asset: any): string => {
-    let imageUrl = '';
-    
-    if (asset.content?.files && asset.content.files.length > 0) {
-      const imageFile = asset.content.files.find((file: { uri?: string; mime?: string }) => 
-        file.mime?.startsWith('image/') || file.uri?.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i)
-      );
-      if (imageFile?.uri) {
-        imageUrl = imageFile.uri;
-      }
-    }
-    
-    if (!imageUrl && asset.content?.links?.image) {
-      imageUrl = asset.content.links.image;
-    }
-    
-    if (!imageUrl && asset.content?.json_uri) {
-      imageUrl = asset.content.json_uri;
-    }
-    
-    return imageUrl || '/placeholder-nft.svg';
-  };
-
-  // Fetch metadata in batches to avoid overwhelming the API
-  const BATCH_SIZE = 5; // Reduced from 10 to be more conservative
-  for (let i = 0; i < vaults.length; i += BATCH_SIZE) {
-    const batch = vaults.slice(i, i + BATCH_SIZE);
-    
-    console.log(`🔄 Fetching metadata batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(vaults.length/BATCH_SIZE)}`);
-    
-    await Promise.all(
-      batch.map(async (vault) => {
-        try {
-          const response = await fetch('/api/helius-rpc', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              jsonrpc: '2.0',
-              id: 'vault-metadata',
-              method: 'getAsset',
-              params: { id: vault.nftAssetId },
-            }),
-          });
-
-          const { result } = await response.json();
-
-          if (result) {
-            vault.nftMetadata = {
-              name: result.content?.metadata?.name || 'Unknown NFT',
-              symbol: result.content?.metadata?.symbol || '',
-              uri: result.content?.json_uri || '',
-              image: extractImageUrl(result),
-            };
-          }
-        } catch (error) {
-          console.error(`Failed to fetch metadata for ${vault.nftAssetId}:`, error);
-        }
-      })
-    );
-
-    // Rate limiting between batches - increased delay
-    if (i + BATCH_SIZE < vaults.length) {
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Increased from 500ms to 1000ms
-    }
-  }
-}
