@@ -2362,9 +2362,6 @@ export type Fractionalization = {
           },
           {
             "name": "reclaimedFinalized"
-          },
-          {
-            "name": "closed"
           }
         ]
       }

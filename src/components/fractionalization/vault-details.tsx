@@ -15,6 +15,7 @@ import Link from 'next/link';
 import { VaultStatus } from '@/types';
 import { CNFTImage } from './cnft-image';
 import { InitializeReclaimButton } from './initialize-reclaim-button';
+import { FinalizeReclaimButton } from './finalize-reclaim-button';
 
 interface VaultDetailsProps {
   vaultId: string;
@@ -37,7 +38,20 @@ export function VaultDetails({ vaultId }: VaultDetailsProps) {
   // Get the balance for this specific vault's fraction mint
   const userBalance = vault?.fractionMint ? userPositions[vault.fractionMint] : undefined;
 
+  // Debug logging
+  console.log('=== VAULT DETAILS DEBUG ===');
+  console.log('isLoading:', isLoading);
+  console.log('Vault:', vault);
+  console.log('Vault Status:', vault?.status);
+  console.log('VaultStatus.ReclaimInitiated:', VaultStatus.ReclaimInitiated);
+  console.log('Status Match:', vault?.status === VaultStatus.ReclaimInitiated);
+  console.log('Public Key:', publicKey?.toBase58());
+  console.log('Reclaim Initiator:', vault?.reclaimInitiator);
+  console.log('Initiator Match:', vault?.reclaimInitiator === publicKey?.toBase58());
+  console.log('========================');
+
   if (isLoading) {
+    console.log('⚠️ STUCK IN LOADING STATE - vault exists but isLoading is true');
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -218,6 +232,20 @@ export function VaultDetails({ vaultId }: VaultDetailsProps) {
                     </Button>
                   </Link>
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Finalize Reclaim Button - Shows for reclaim initiator (no balance check needed) */}
+          {vault.status === VaultStatus.ReclaimInitiated && 
+           publicKey && 
+           vault.reclaimInitiator === publicKey.toBase58() && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Finalize Reclaim</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <FinalizeReclaimButton vault={vault} />
               </CardContent>
             </Card>
           )}

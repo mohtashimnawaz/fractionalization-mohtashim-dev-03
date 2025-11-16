@@ -4,18 +4,20 @@
 
 "use client";
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation';
 import { Vault, VaultStatus } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CNFTImage } from './cnft-image';
-import { Calendar, User, Wallet } from 'lucide-react';
+import { Calendar, User, Wallet, Clock } from 'lucide-react';
 
 interface VaultCardProps {
   vault: Vault;
 }
+
+const RECLAIM_ESCROW_PERIOD_SECONDS = 7 * 24 * 60 * 60; // 7 days in seconds
 
 const statusColors: Record<VaultStatus, string> = {
   [VaultStatus.Active]: 'bg-green-500/10 text-green-500 hover:bg-green-500/20',
@@ -33,11 +35,53 @@ const statusLabels: Record<VaultStatus, string> = {
 
 export function VaultCard({ vault }: VaultCardProps) {
   const router = useRouter();
+  const [timeRemaining, setTimeRemaining] = useState<number>(0);
+  const [escrowEnded, setEscrowEnded] = useState(false);
   
+  // Calculate escrow timer for ReclaimInitiated vaults
+  useEffect(() => {
+    if (vault.status === VaultStatus.ReclaimInitiated && vault.reclaimInitiationTimestamp) {
+      const escrowEndsAt = vault.reclaimInitiationTimestamp + (RECLAIM_ESCROW_PERIOD_SECONDS * 1000);
+      
+      const calculateTimeRemaining = () => {
+        const now = Date.now();
+        const remaining = escrowEndsAt - now;
+        
+        if (remaining <= 0) {
+          setEscrowEnded(true);
+          setTimeRemaining(0);
+        } else {
+          setEscrowEnded(false);
+          setTimeRemaining(remaining);
+        }
+      };
+
+      calculateTimeRemaining();
+      const interval = setInterval(calculateTimeRemaining, 1000);
+
+      return () => clearInterval(interval);
+    }
+  }, [vault.status, vault.reclaimInitiationTimestamp]);
+
   // Safety check: return null if vault data is invalid
   if (!vault || !vault.nftMetadata) {
     return null;
   }
+
+  const formatTimeRemaining = (ms: number): string => {
+    const seconds = Math.floor(ms / 1000);
+    const days = Math.floor(seconds / (24 * 60 * 60));
+    const hours = Math.floor((seconds % (24 * 60 * 60)) / (60 * 60));
+    const minutes = Math.floor((seconds % (60 * 60)) / 60);
+
+    if (days > 0) {
+      return `${days}d ${hours}h`;
+    } else if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    } else {
+      return `${minutes}m`;
+    }
+  };
 
   // Debug logging for user position
   if (vault.userPosition !== undefined) {
@@ -94,7 +138,14 @@ export function VaultCard({ vault }: VaultCardProps) {
             {vault.nftMetadata.name}
           </h3>
           <Badge className={statusColors[vault.status]} variant="secondary">
-            {statusLabels[vault.status]}
+            {vault.status === VaultStatus.ReclaimInitiated ? (
+              <div className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {escrowEnded ? 'Ready to Finalize' : formatTimeRemaining(timeRemaining)}
+              </div>
+            ) : (
+              statusLabels[vault.status]
+            )}
           </Badge>
         </div>
 

@@ -8,6 +8,9 @@ export * from './useExplorer';
 // Fractionalization hooks (cNFTs, asset with proof, fractionalize)
 export * from './useFractionalize';
 
+// Reclaim hooks
+export * from './useFinalizeReclaim';
+
 // Umi instance hook
 export * from './useUmi';
 

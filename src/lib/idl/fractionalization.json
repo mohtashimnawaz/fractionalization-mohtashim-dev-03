@@ -2356,9 +2356,6 @@
           },
           {
             "name": "ReclaimedFinalized"
-          },
-          {
-            "name": "Closed"
           }
         ]
       }
