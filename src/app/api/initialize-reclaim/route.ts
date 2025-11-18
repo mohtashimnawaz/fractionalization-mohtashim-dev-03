@@ -7,10 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as anchor from '@coral-xyz/anchor';
 import { 
   Connection, 
-  PublicKey, 
-  TransactionMessage, 
-  VersionedTransaction,
-  ComputeBudgetProgram 
+  PublicKey
 } from '@solana/web3.js';
 import { 
   getAssociatedTokenAddressSync, 

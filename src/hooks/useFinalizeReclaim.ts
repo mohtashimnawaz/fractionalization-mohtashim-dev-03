@@ -10,7 +10,6 @@ import { toast } from 'sonner';
 import { useVaultStore } from '@/stores/useVaultStore';
 import type { Vault } from '@/types/vault';
 
-const HELIUS_RPC_URL = process.env.NEXT_PUBLIC_HELIUS_RPC_URL!;
 const SHARED_ALT = process.env.NEXT_PUBLIC_SHARED_ALT;
 
 interface FinalizeReclaimParams {
@@ -34,8 +33,8 @@ export function useFinalizeReclaim() {
     setIsLoading(true);
 
     try {
-      // 1. Fetch asset proof from Helius
-      const assetProofResponse = await fetch(`${HELIUS_RPC_URL}`, {
+      // 1. Fetch asset proof from Helius via secure API proxy
+      const assetProofResponse = await fetch('/api/helius-rpc', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -71,7 +70,7 @@ export function useFinalizeReclaim() {
       const altAccount = lookupTableAccount.value;
 
       // 3. Fetch asset data for metadata
-      const assetResponse = await fetch(`${HELIUS_RPC_URL}`, {
+      const assetResponse = await fetch('/api/helius-rpc', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

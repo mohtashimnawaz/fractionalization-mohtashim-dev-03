@@ -32,7 +32,12 @@ interface VaultStore {
 }
 
 // Cache configuration
-const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_DURATION_MS = 30 * 60 * 1000; // 30 minutes - increased from 5
+const METADATA_CACHE_DURATION_MS = 60 * 60 * 1000; // 1 hour for metadata
+
+// Request deduplication
+let pendingMetadataFetch: Promise<void> | null = null;
+let pendingPositionsFetch: Promise<void> | null = null;
 
 const PROGRAM_ID = new PublicKey(idl.address);
 
@@ -304,11 +309,19 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
   // Fetch metadata for specific vaults (on-demand)
   fetchMetadataForVaults: async (vaultIds: string[]) => {
+    // Prevent duplicate requests
+    if (pendingMetadataFetch) {
+      console.log('⏭️ Metadata fetch already in progress, skipping...');
+      return pendingMetadataFetch;
+    }
+
     const { vaults, metadataCache } = get();
     
     // Filter out vaults that already have metadata cached
     const vaultsToFetch = vaults.filter(v => 
-      vaultIds.includes(v.id) && !metadataCache[v.nftAssetId]
+      vaultIds.includes(v.id) && 
+      !metadataCache[v.nftAssetId] &&
+      v.nftMetadata.name === 'Loading...'
     );
 
     if (vaultsToFetch.length === 0) {
@@ -318,67 +331,80 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
     console.log(`📡 Fetching metadata for ${vaultsToFetch.length} vaults...`);
 
-    try {
-      // Fetch in batches of 5 with 200ms delay
-      const BATCH_SIZE = 5;
-      for (let i = 0; i < vaultsToFetch.length; i += BATCH_SIZE) {
-        const batch = vaultsToFetch.slice(i, i + BATCH_SIZE);
-        
-        await Promise.all(
-          batch.map(async (vault) => {
-            try {
-              const response = await fetch('/api/helius-rpc', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  jsonrpc: '2.0',
-                  id: 'vault-metadata',
-                  method: 'getAsset',
-                  params: { id: vault.nftAssetId },
-                }),
-              });
+    const fetchPromise = (async () => {
+      try {
+        // Increase batch size for faster loading
+        const BATCH_SIZE = 10;
+        for (let i = 0; i < vaultsToFetch.length; i += BATCH_SIZE) {
+          const batch = vaultsToFetch.slice(i, i + BATCH_SIZE);
+          
+          await Promise.all(
+            batch.map(async (vault) => {
+              try {
+                const response = await fetch('/api/helius-rpc', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 'vault-metadata',
+                    method: 'getAsset',
+                    params: { id: vault.nftAssetId },
+                  }),
+                });
 
-              const { result } = await response.json();
+                const { result } = await response.json();
 
-              if (result) {
-                const metadata = {
-                  name: result.content?.metadata?.name || 'Unknown NFT',
-                  symbol: result.content?.metadata?.symbol || '',
-                  uri: result.content?.json_uri || '',
-                  image: extractImageUrl(result),
-                };
+                if (result) {
+                  const metadata = {
+                    name: result.content?.metadata?.name || 'Unknown NFT',
+                    symbol: result.content?.metadata?.symbol || '',
+                    uri: result.content?.json_uri || '',
+                    image: extractImageUrl(result),
+                  };
 
-                // Update metadata cache
-                set((state) => ({
-                  metadataCache: {
-                    ...state.metadataCache,
-                    [vault.nftAssetId]: metadata,
-                  },
-                  vaults: state.vaults.map(v => 
-                    v.id === vault.id ? { ...v, nftMetadata: metadata } : v
-                  ),
-                }));
+                  // Update metadata cache
+                  set((state) => ({
+                    metadataCache: {
+                      ...state.metadataCache,
+                      [vault.nftAssetId]: metadata,
+                    },
+                    vaults: state.vaults.map(v => 
+                      v.id === vault.id ? { ...v, nftMetadata: metadata } : v
+                    ),
+                  }));
+                }
+              } catch (error) {
+                console.error(`Failed to fetch metadata for ${vault.nftAssetId}:`, error);
               }
-            } catch (error) {
-              console.error(`Failed to fetch metadata for ${vault.nftAssetId}:`, error);
-            }
-          })
-        );
+            })
+          );
 
-        // Small delay between batches
-        if (i + BATCH_SIZE < vaultsToFetch.length) {
-          await new Promise(resolve => setTimeout(resolve, 200));
+          // Reduce delay between batches
+          if (i + BATCH_SIZE < vaultsToFetch.length) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
         }
-      }
 
-      console.log(`✅ Fetched metadata for ${vaultsToFetch.length} vaults`);
-    } catch (error) {
-      console.error('Error fetching metadata:', error);
-    }
+        console.log(`✅ Fetched metadata for ${vaultsToFetch.length} vaults`);
+      } catch (error) {
+        console.error('Error fetching metadata:', error);
+      } finally {
+        pendingMetadataFetch = null;
+      }
+    })();
+
+    pendingMetadataFetch = fetchPromise;
+    return fetchPromise;
   },
 
-  // Fetch user positions for all vaults (with rate limiting)
+  // Fetch user positions for all vaults (OPTIMIZED with getMultipleAccounts)
   fetchUserPositions: async (userWallet: string) => {
+    // Prevent duplicate requests
+    if (pendingPositionsFetch) {
+      console.log('⏭️ Position fetch already in progress, skipping...');
+      return pendingPositionsFetch;
+    }
+
     const { vaults } = get();
     
     if (vaults.length === 0) {
@@ -388,61 +414,60 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
     console.log(`🔍 Fetching positions for wallet: ${userWallet.slice(0, 8)}... (${vaults.length} vaults)`);
 
-    try {
-      const endpointResponse = await fetch('/api/rpc-endpoint');
-      const { endpoint } = await endpointResponse.json();
-      const connection = new Connection(endpoint, 'confirmed');
-      const userPubkey = new PublicKey(userWallet);
+    const fetchPromise = (async () => {
+      try {
+        const endpointResponse = await fetch('/api/rpc-endpoint');
+        const { endpoint } = await endpointResponse.json();
+        const connection = new Connection(endpoint, 'confirmed');
+        const userPubkey = new PublicKey(userWallet);
 
-      const positions: Record<string, number> = {};
+        const positions: Record<string, number> = {};
 
-      // Fetch all positions in parallel with Promise.all (faster)
-      // But limit to batches of 20 to avoid overwhelming the RPC
-      const BATCH_SIZE = 20;
-      for (let i = 0; i < vaults.length; i += BATCH_SIZE) {
-        const batch = vaults.slice(i, i + BATCH_SIZE);
+        // OPTIMIZED: Use getTokenAccountsByOwner once instead of multiple calls
+        console.log('🚀 Fetching all token accounts in one call...');
+        const startTime = Date.now();
         
-        console.log(`Checking batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(vaults.length/BATCH_SIZE)} (${batch.length} vaults)`);
-        
-        await Promise.all(
-          batch.map(async (vault) => {
-            try {
-              const mintPubkey = new PublicKey(vault.fractionMint);
-              
-              const response = await connection.getTokenAccountsByOwner(
-                userPubkey,
-                { mint: mintPubkey }
-              );
-
-              if (response.value.length > 0) {
-                const accountInfo = response.value[0].account.data;
-                const amountBN = new anchor.BN(accountInfo.slice(64, 72), 'le');
-                const balance = parseFloat(amountBN.toString()) / 1e9;
-                
-                if (balance > 0) {
-                  positions[vault.fractionMint] = balance;
-                  console.log(`✅ User has ${balance} tokens for ${vault.nftMetadata.name}`);
-                }
-              }
-            } catch (error) {
-              // Silently skip errors for individual vaults
-            }
-          })
+        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+          userPubkey,
+          { programId: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') }
         );
-        
-        // Small delay between batches to avoid rate limiting
-        if (i + BATCH_SIZE < vaults.length) {
-          await new Promise(resolve => setTimeout(resolve, 200));
-        }
-      }
 
-      console.log(`✅ Fetched positions for ${Object.keys(positions).length} vaults out of ${vaults.length} total`);
-      console.log('📊 Positions:', positions);
-      
-      set({ userPositions: positions });
-    } catch (error) {
-      console.error('Error fetching user positions:', error);
-    }
+        const elapsed = Date.now() - startTime;
+        console.log(`✅ Fetched ${tokenAccounts.value.length} token accounts in ${elapsed}ms`);
+
+        // Create a map of mint -> balance for O(1) lookup
+        const tokenBalanceMap = new Map<string, number>();
+        tokenAccounts.value.forEach(account => {
+          const parsed = account.account.data.parsed;
+          const mint = parsed.info.mint;
+          const amount = parseFloat(parsed.info.tokenAmount.amount) / 1e9;
+          if (amount > 0) {
+            tokenBalanceMap.set(mint, amount);
+          }
+        });
+
+        // Match with vaults
+        vaults.forEach(vault => {
+          const balance = tokenBalanceMap.get(vault.fractionMint);
+          if (balance && balance > 0) {
+            positions[vault.fractionMint] = balance;
+            console.log(`✅ User has ${balance} tokens for ${vault.nftMetadata.name}`);
+          }
+        });
+
+        console.log(`✅ Found positions in ${Object.keys(positions).length} vaults (total time: ${Date.now() - startTime}ms)`);
+        console.log('📊 Positions:', positions);
+        
+        set({ userPositions: positions });
+      } catch (error) {
+        console.error('Error fetching user positions:', error);
+      } finally {
+        pendingPositionsFetch = null;
+      }
+    })();
+
+    pendingPositionsFetch = fetchPromise;
+    return fetchPromise;
   },
 
   // Get vaults filtered by status

@@ -10,6 +10,7 @@ export * from './useFractionalize';
 
 // Reclaim hooks
 export * from './useFinalizeReclaim';
+export * from './useCancelReclaim';
 
 // Umi instance hook
 export * from './useUmi';

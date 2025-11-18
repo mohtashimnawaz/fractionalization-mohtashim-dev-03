@@ -4,7 +4,7 @@
 
 'use client';
 
-import { useVaultDetails, useUserBalance } from '@/hooks';
+import { useVaultDetails } from '@/hooks';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useVaultStore } from '@/stores/useVaultStore';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +16,7 @@ import { VaultStatus } from '@/types';
 import { CNFTImage } from './cnft-image';
 import { InitializeReclaimButton } from './initialize-reclaim-button';
 import { FinalizeReclaimButton } from './finalize-reclaim-button';
+import { CancelReclaimButton } from './cancel-reclaim-button';
 
 interface VaultDetailsProps {
   vaultId: string;
@@ -240,14 +241,25 @@ export function VaultDetails({ vaultId }: VaultDetailsProps) {
           {vault.status === VaultStatus.ReclaimInitiated && 
            publicKey && 
            vault.reclaimInitiator === publicKey.toBase58() && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Finalize Reclaim</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <FinalizeReclaimButton vault={vault} />
-              </CardContent>
-            </Card>
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Finalize Reclaim</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <FinalizeReclaimButton vault={vault} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Cancel Reclaim</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <CancelReclaimButton vault={vault} />
+                </CardContent>
+              </Card>
+            </>
           )}
 
           {/* Reclaim Actions - Show even without balance */}

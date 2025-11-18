@@ -1,10 +1,10 @@
 /**
- * Vault explorer component - Browse and filter vaults with pagination
+ * Optimized vault explorer with better loading states
  */
 
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useVaultStore } from '@/stores/useVaultStore';
 import { useVaultEventListener } from '@/hooks/useVaultEventListener';
@@ -22,8 +22,8 @@ const filterOptions = [
   { label: 'Closed', value: VaultStatus.Closed },
 ];
 
-const INITIAL_DISPLAY = 10; // Show 10 vaults initially
-const LOAD_MORE_COUNT = 10; // Load 10 more when clicking "Load More"
+const INITIAL_DISPLAY = 10;
+const LOAD_MORE_COUNT = 10;
 
 export function VaultExplorer() {
   const { publicKey } = useWallet();
@@ -31,14 +31,11 @@ export function VaultExplorer() {
   const [displayLimit, setDisplayLimit] = useState(INITIAL_DISPLAY);
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingPositions, setIsLoadingPositions] = useState(false);
   const hasLoadedPositions = useRef(false);
   
-  // Listen to program events and auto-refresh
-  // Note: This uses WebSocket connections which may show warnings in console
-  // The app will work fine without it - you'll just need to manually refresh
   useVaultEventListener();
   
-  // Get store state and actions - use selector for better reactivity
   const vaults = useVaultStore(state => state.vaults);
   const isLoading = useVaultStore(state => state.isLoading);
   const error = useVaultStore(state => state.error);
@@ -53,91 +50,76 @@ export function VaultExplorer() {
   const isCacheValid = useVaultStore(state => state.isCacheValid);
   const fetchMetadataForVaults = useVaultStore(state => state.fetchMetadataForVaults);
 
-  // Fetch vaults on mount (uses cached data if valid)
+  // Fetch vaults on mount
   useEffect(() => {
     console.log('🚀 Component mounted, checking vault cache...');
-    console.log('Current vault count:', vaults.length);
-    console.log('Is loading:', isLoading);
-    console.log('Cache valid:', isCacheValid());
     
-    // Use smart fetching that respects cache
     fetchVaultsIfStale().then(() => {
-      // Immediately fetch metadata for first 20 vaults to show images on load
       const { vaults: loadedVaults } = useVaultStore.getState();
       if (loadedVaults.length > 0) {
         const firstVaults = loadedVaults.slice(0, 20).map(v => v.id);
-        fetchMetadataForVaults(firstVaults).catch(err => {
-          console.error('Failed to fetch initial metadata:', err);
-        });
+        fetchMetadataForVaults(firstVaults).catch(console.error);
       }
-    }).catch(err => {
-      console.error('Failed to fetch vaults:', err);
-    });
+    }).catch(console.error);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch user positions when wallet connects AND vaults are loaded
+  // Fetch user positions
   useEffect(() => {
-    console.log('👛 Wallet effect running...', {
-      hasWallet: !!publicKey,
-      vaultCount: vaults.length,
-      hasLoadedPositions: hasLoadedPositions.current
-    });
-    
     if (publicKey && vaults.length > 0 && !hasLoadedPositions.current) {
-      console.log('💼 Wallet connected and vaults loaded, fetching positions...');
-      fetchUserPositions(publicKey.toBase58()).catch(err => {
-        console.error('Failed to fetch positions:', err);
-      });
-      hasLoadedPositions.current = true;
+      console.log('💼 Fetching user positions...');
+      setIsLoadingPositions(true);
+      fetchUserPositions(publicKey.toBase58())
+        .then(() => {
+          hasLoadedPositions.current = true;
+          setIsLoadingPositions(false);
+        })
+        .catch(err => {
+          console.error('Failed to fetch positions:', err);
+          setIsLoadingPositions(false);
+        });
     } else if (!publicKey) {
-      console.log('👋 Wallet disconnected, clearing positions');
       clearUserPositions();
       hasLoadedPositions.current = false;
+      setIsLoadingPositions(false);
     }
   }, [publicKey, vaults.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Filter vaults by status
-  const statusFilteredVaults = statusFilter !== undefined 
-    ? getVaultsByStatus(statusFilter) 
-    : vaults;
+  // Memoize filtered vaults
+  const statusFilteredVaults = useMemo(() => 
+    statusFilter !== undefined ? getVaultsByStatus(statusFilter) : vaults,
+    [statusFilter, vaults, getVaultsByStatus]
+  );
 
-  // Apply search filter
-  const filteredVaults = statusFilteredVaults.filter((vault) => {
-    if (!vault) return false;
-    
-    // Search filter (by name or symbol)
-    if (searchQuery) {
+  const filteredVaults = useMemo(() => 
+    statusFilteredVaults.filter((vault) => {
+      if (!vault || !searchQuery) return true;
       const query = searchQuery.toLowerCase();
-      const matchesName = vault.nftMetadata?.name?.toLowerCase().includes(query);
-      const matchesSymbol = vault.nftMetadata?.symbol?.toLowerCase().includes(query);
-      return matchesName || matchesSymbol;
-    }
-    
-    return true;
-  });
+      return vault.nftMetadata?.name?.toLowerCase().includes(query) ||
+             vault.nftMetadata?.symbol?.toLowerCase().includes(query);
+    }),
+    [statusFilteredVaults, searchQuery]
+  );
 
-  // Add user positions to vaults
-  const vaultsWithPositions = filteredVaults.map(vault => {
-    const position = userPositions[vault.fractionMint] || 0;
-    return {
+  const vaultsWithPositions = useMemo(() => 
+    filteredVaults.map(vault => ({
       ...vault,
-      userPosition: position,
-    };
-  });
+      userPosition: userPositions[vault.fractionMint] || 0,
+    })),
+    [filteredVaults, userPositions]
+  );
 
-  // Apply display limit
-  const displayedVaults = vaultsWithPositions.slice(0, displayLimit);
+  const displayedVaults = useMemo(() => 
+    vaultsWithPositions.slice(0, displayLimit),
+    [vaultsWithPositions, displayLimit]
+  );
 
-  // Fetch metadata for currently displayed vaults (on-demand)
+  // Fetch metadata for displayed vaults
   useEffect(() => {
     if (displayedVaults.length > 0) {
       const vaultIds = displayedVaults.map(v => v.id);
-      fetchMetadataForVaults(vaultIds).catch(err => {
-        console.error('Failed to fetch metadata:', err);
-      });
+      fetchMetadataForVaults(vaultIds).catch(console.error);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [displayLimit]); // Only re-fetch when display limit changes
+  }, [displayLimit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasMore = displayLimit < filteredVaults.length;
   const isInitialLoad = isLoading && vaults.length === 0;
@@ -146,10 +128,9 @@ export function VaultExplorer() {
     setDisplayLimit((prev) => prev + LOAD_MORE_COUNT);
   };
 
-  // Manual refresh handler
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    invalidateCache(); // Force cache invalidation
+    invalidateCache();
     await fetchAllVaults();
     if (publicKey) {
       await fetchUserPositions(publicKey.toBase58());
@@ -157,30 +138,24 @@ export function VaultExplorer() {
     setIsRefreshing(false);
   };
 
-  // Format last update time
   const getLastUpdateText = () => {
     if (!lastFetchTimestamp) return 'Never updated';
-    const now = Date.now();
-    const diff = now - lastFetchTimestamp;
+    const diff = Date.now() - lastFetchTimestamp;
     const minutes = Math.floor(diff / 60000);
     const seconds = Math.floor((diff % 60000) / 1000);
     
-    if (minutes === 0) {
-      return `Updated ${seconds}s ago`;
-    } else if (minutes < 60) {
-      return `Updated ${minutes}m ago`;
-    } else {
-      const hours = Math.floor(minutes / 60);
-      return `Updated ${hours}h ago`;
-    }
+    if (minutes === 0) return `Updated ${seconds}s ago`;
+    if (minutes < 60) return `Updated ${minutes}m ago`;
+    return `Updated ${Math.floor(minutes / 60)}h ago`;
   };
   
   if (isInitialLoad) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 space-y-4">
-        <Loader2 className="h-12 w-12 animate-spin text-blue-600" />
-        <span className="text-muted-foreground font-medium text-lg">Loading vaults...</span>
-        <p className="text-sm text-muted-foreground">Please wait while we fetch your vaults</p>
+      <div className="space-y-8">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          <span className="ml-3 text-muted-foreground font-medium">Loading vaults...</span>
+        </div>
       </div>
     );
   }
@@ -198,7 +173,7 @@ export function VaultExplorer() {
 
   return (
     <div className="space-y-6">
-      {/* Search Bar and Refresh with enhanced styling */}
+      {/* Search Bar and Refresh */}
       <div className="flex gap-3 items-center">
         <div className="relative flex-1 max-w-md group">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-blue-600 transition-colors" />
@@ -225,14 +200,19 @@ export function VaultExplorer() {
           )}
         </div>
         
-        {/* Refresh Button with enhanced styling */}
         <div className="flex items-center gap-2">
+          {isLoadingPositions && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading balances...
+            </div>
+          )}
           <Button
             onClick={handleRefresh}
             disabled={isRefreshing || isLoading}
             variant="outline"
             size="sm"
-            className="gap-2 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950 transition-all duration-300 transform hover:scale-105"
+            className="gap-2 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950 transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`} />
             Refresh
@@ -240,7 +220,7 @@ export function VaultExplorer() {
         </div>
       </div>
 
-      {/* Last Update Info with enhanced styling */}
+      {/* Last Update Info */}
       {lastFetchTimestamp > 0 && (
         <div className="flex items-center justify-between text-xs bg-blue-50/50 dark:bg-blue-950/20 rounded-lg px-4 py-2 border border-blue-100 dark:border-blue-900">
           <span className="text-muted-foreground">{getLastUpdateText()}</span>
@@ -250,7 +230,7 @@ export function VaultExplorer() {
         </div>
       )}
 
-      {/* Filters with enhanced button styling */}
+      {/* Filters */}
       <div className="flex flex-wrap gap-2 items-center justify-between">
         <div className="flex flex-wrap gap-2">
           {filterOptions.map((option) => (
@@ -278,7 +258,7 @@ export function VaultExplorer() {
         </p>
       </div>
 
-      {/* Vault Grid with stagger animation */}
+      {/* Vault Grid */}
       {displayedVaults.length > 0 ? (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -293,7 +273,6 @@ export function VaultExplorer() {
             ))}
           </div>
           
-          {/* Load More Button with enhanced styling */}
           {hasMore && (
             <div className="flex justify-center pt-4">
               <Button

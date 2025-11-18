@@ -10,7 +10,7 @@ import { useWallet } from '@/components/solana/solana-provider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, AlertCircle } from 'lucide-react';
-import Image from 'next/image';
+import { CNFTImage } from './cnft-image';
 import { VaultStatus } from '@/types';
 
 const RECLAIM_THRESHOLD = 0.8; // 80% threshold
@@ -98,12 +98,10 @@ export function ReclaimInterface({ initialVaultId }: { initialVaultId?: string }
                 >
                   <div className="p-4 space-y-3">
                     <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-muted">
-                      <Image
-                        src={vault.nftMetadata.image}
-                        alt={vault.nftMetadata.name}
-                        fill
-                        className="object-cover"
-                        sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, 33vw"
+                      <CNFTImage
+                        imageUrl={vault.nftMetadata.image}
+                        name={vault.nftMetadata.name}
+                        className="w-full h-full object-cover"
                       />
                     </div>
                     <div>
@@ -132,12 +130,10 @@ export function ReclaimInterface({ initialVaultId }: { initialVaultId?: string }
               <div className="bg-muted rounded-lg p-4 space-y-2">
                 <div className="flex items-center gap-3">
                   <div className="relative w-16 h-16 rounded-lg overflow-hidden bg-background">
-                    <Image
-                      src={selectedVault.nftMetadata.image}
-                      alt={selectedVault.nftMetadata.name}
-                      fill
-                      className="object-cover"
-                      sizes="64px"
+                    <CNFTImage
+                      imageUrl={selectedVault.nftMetadata.image}
+                      name={selectedVault.nftMetadata.name}
+                      className="w-16 h-16 object-cover"
                     />
                   </div>
                   <div>

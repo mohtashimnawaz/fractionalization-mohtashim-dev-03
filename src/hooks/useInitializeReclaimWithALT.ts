@@ -6,12 +6,11 @@
 import { useCallback, useState } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { 
-  TransactionInstruction, 
   PublicKey, 
   TransactionMessage, 
   VersionedTransaction,
-  AddressLookupTableProgram,
   AddressLookupTableAccount,
+  TransactionInstruction,
 } from '@solana/web3.js';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';

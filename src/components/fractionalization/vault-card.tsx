@@ -17,7 +17,8 @@ interface VaultCardProps {
   vault: Vault;
 }
 
-const RECLAIM_ESCROW_PERIOD_SECONDS = 7 * 24 * 60 * 60; // 7 days in seconds
+// FOR TESTING: Set to 10 seconds. Change back to 7 * 24 * 60 * 60 for production
+const RECLAIM_ESCROW_PERIOD_SECONDS = 10; // 10 seconds for testing
 
 const statusColors: Record<VaultStatus, string> = {
   [VaultStatus.Active]: 'bg-green-500/10 text-green-500 hover:bg-green-500/20',

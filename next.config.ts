@@ -112,6 +112,13 @@ const nextConfig: NextConfig = {
         pathname: '/**',
       },
     ],
+    // Increase timeout and add better error handling
+    minimumCacheTTL: 60,
+    dangerouslyAllowSVG: true,
+    contentDispositionType: 'attachment',
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+    // Disable optimization for external images (too slow/unreliable)
+    unoptimized: false,
   },
   
   webpack: (config, { isServer }) => {
