@@ -1,6 +1,7 @@
 /**
  * cNFT Image Component
  * Handles fetching metadata from json_uri if image is not directly available
+ * Uses multiple IPFS gateways to avoid CORS and rate limiting issues
  */
 
 'use client';
@@ -13,17 +14,27 @@ interface CNFTImageProps {
   className?: string;
 }
 
-// Helper to convert IPFS URLs
-function convertIpfsUrl(url: string): string {
+// Multiple IPFS gateways for fallback (avoid rate limiting and CORS issues)
+const IPFS_GATEWAYS = [
+  'https://cloudflare-ipfs.com/ipfs/',
+  'https://ipfs.io/ipfs/',
+  'https://dweb.link/ipfs/',
+  'https://gateway.pinata.cloud/ipfs/',
+];
+
+// Helper to convert IPFS URLs with fallback gateways
+function convertIpfsUrl(url: string, gatewayIndex: number = 0): string {
   if (!url || typeof url !== 'string') {
     return '';
   }
   
+  const gateway = IPFS_GATEWAYS[gatewayIndex] || IPFS_GATEWAYS[0];
+  
   if (url.startsWith('ipfs://')) {
-    return url.replace('ipfs://', 'https://gateway.pinata.cloud/ipfs/');
+    return url.replace('ipfs://', gateway);
   }
   if (url.startsWith('Qm') || url.startsWith('bafy')) {
-    return `https://gateway.pinata.cloud/ipfs/${url}`;
+    return `${gateway}${url}`;
   }
   return url;
 }
@@ -69,19 +80,24 @@ export function CNFTImage({ imageUrl, name, className }: CNFTImageProps) {
         // Check if it's clearly an image URL
         const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i;
         if (imageUrl.match(imageExtensions)) {
-          // Direct image URL - use it
-          const convertedUrl = convertIpfsUrl(imageUrl);
-          if (isMounted && isValidUrl(convertedUrl)) {
-            setResolvedImage(convertedUrl);
-            setIsLoading(false);
-          } else if (isMounted) {
+          // Direct image URL - try with multiple gateways
+          for (let i = 0; i < IPFS_GATEWAYS.length; i++) {
+            const convertedUrl = convertIpfsUrl(imageUrl, i);
+            if (isMounted && isValidUrl(convertedUrl)) {
+              setResolvedImage(convertedUrl);
+              setIsLoading(false);
+              return;
+            }
+          }
+          // All gateways failed
+          if (isMounted) {
             setError(true);
             setIsLoading(false);
           }
           return;
         }
 
-        // If it looks like a metadata URI (IPFS, Arweave, or contains /ipfs/), fetch the metadata
+        // If it looks like a metadata URI, fetch with gateway fallback
         const isMetadataUri = imageUrl.includes('gateway.pinata.cloud/ipfs/') || 
                              imageUrl.includes('ipfs://') ||
                              imageUrl.includes('/ipfs/') ||
@@ -90,87 +106,80 @@ export function CNFTImage({ imageUrl, name, className }: CNFTImageProps) {
                              imageUrl.startsWith('baf');
 
         if (isMetadataUri) {
-          try {
-            const metadataUrl = convertIpfsUrl(imageUrl);
-            
-            // Add timeout to prevent hanging
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-            
-            const response = await fetch(metadataUrl, { 
-              signal: controller.signal,
-              cache: 'force-cache' // Use browser cache
-            });
-            clearTimeout(timeoutId);
-            
-            if (!response.ok) {
-              // Silently fail for 404s - these are expected for some old/broken NFTs
-              if (isMounted) {
-                setError(true);
-                setIsLoading(false);
+          // Try multiple gateways
+          for (let gatewayIndex = 0; gatewayIndex < IPFS_GATEWAYS.length; gatewayIndex++) {
+            try {
+              const metadataUrl = convertIpfsUrl(imageUrl, gatewayIndex);
+              
+              // Add timeout to prevent hanging
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+              
+              const response = await fetch(metadataUrl, { 
+                signal: controller.signal,
+                cache: 'force-cache', // Use browser cache
+                mode: 'cors',
+              });
+              clearTimeout(timeoutId);
+              
+              if (!response.ok) {
+                // Try next gateway
+                continue;
               }
-              return;
-            }
 
-            const contentType = response.headers.get('content-type');
-            
-            // Try to parse as JSON first
-            if (!contentType || contentType.includes('application/json') || contentType.includes('text/plain')) {
-              try {
-                const metadata = await response.json();
-                
-                if (isMounted && metadata.image) {
-                  const finalImageUrl = convertIpfsUrl(metadata.image);
-                  if (isValidUrl(finalImageUrl)) {
-                    setResolvedImage(finalImageUrl);
-                    setIsLoading(false);
-                    return;
+              const contentType = response.headers.get('content-type');
+              
+              // Try to parse as JSON first
+              if (!contentType || contentType.includes('application/json') || contentType.includes('text/plain')) {
+                try {
+                  const metadata = await response.json();
+                  
+                  if (isMounted && metadata.image) {
+                    const finalImageUrl = convertIpfsUrl(metadata.image, gatewayIndex);
+                    if (isValidUrl(finalImageUrl)) {
+                      setResolvedImage(finalImageUrl);
+                      setIsLoading(false);
+                      return;
+                    }
                   }
-                }
-                
-                // Check properties.files as fallback
-                if (isMounted && metadata.properties?.files?.[0]?.uri) {
-                  const finalImageUrl = convertIpfsUrl(metadata.properties.files[0].uri);
-                  if (isValidUrl(finalImageUrl)) {
-                    setResolvedImage(finalImageUrl);
-                    setIsLoading(false);
-                    return;
+                  
+                  // Check properties.files as fallback
+                  if (isMounted && metadata.properties?.files?.[0]?.uri) {
+                    const finalImageUrl = convertIpfsUrl(metadata.properties.files[0].uri, gatewayIndex);
+                    if (isValidUrl(finalImageUrl)) {
+                      setResolvedImage(finalImageUrl);
+                      setIsLoading(false);
+                      return;
+                    }
                   }
+                } catch {
+                  // Not valid JSON, try next gateway
+                  continue;
                 }
-              } catch {
-                // Not valid JSON, might be an image - try displaying it directly
-                if (isMounted && isValidUrl(metadataUrl)) {
-                  setResolvedImage(metadataUrl);
-                  setIsLoading(false);
-                } else if (isMounted) {
-                  setError(true);
-                  setIsLoading(false);
-                }
+              }
+              
+              // If we get here with success, treat the URL as a direct image
+              if (isMounted && isValidUrl(metadataUrl)) {
+                setResolvedImage(metadataUrl);
+                setIsLoading(false);
                 return;
               }
+            } catch {
+              // Failed to fetch with this gateway - try next one
+              continue;
             }
-            
-            // If we get here, treat the URL as a direct image
-            if (isMounted && isValidUrl(metadataUrl)) {
-              setResolvedImage(metadataUrl);
-              setIsLoading(false);
-            } else if (isMounted) {
-              setError(true);
-              setIsLoading(false);
-            }
-            return;
-          } catch {
-            // Failed to fetch - show placeholder
-            if (isMounted) {
-              setError(true);
-              setIsLoading(false);
-            }
-            return;
           }
+          
+          // All gateways failed
+          if (isMounted) {
+            setError(true);
+            setIsLoading(false);
+          }
+          return;
         }
         
-        // Otherwise assume it's a direct image URL
-        const convertedUrl = convertIpfsUrl(imageUrl);
+        // Otherwise assume it's a direct image URL - try first gateway
+        const convertedUrl = convertIpfsUrl(imageUrl, 0);
         if (isMounted && isValidUrl(convertedUrl)) {
           setResolvedImage(convertedUrl);
           setIsLoading(false);

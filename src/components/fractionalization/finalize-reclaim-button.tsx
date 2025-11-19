@@ -20,7 +20,7 @@ interface FinalizeReclaimButtonProps {
   vault: Vault;
 }
 
-const RECLAIM_ESCROW_PERIOD_SECONDS = 7 * 24 * 60 * 60; // 7 days in seconds
+const RECLAIM_ESCROW_PERIOD_SECONDS = 10; // 10 seconds for testing (was 7 days)
 
 export function FinalizeReclaimButton({ vault }: FinalizeReclaimButtonProps) {
   const { finalizeReclaim, isLoading } = useFinalizeReclaim();
@@ -104,7 +104,7 @@ export function FinalizeReclaimButton({ vault }: FinalizeReclaimButtonProps) {
         <DialogHeader>
           <DialogTitle>Finalize NFT Reclaim</DialogTitle>
           <DialogDescription>
-            The 7-day escrow period has ended. You can now finalize the reclaim and receive your NFT.
+            The escrow period has ended. You can now finalize the reclaim and receive your NFT.
           </DialogDescription>
         </DialogHeader>
 

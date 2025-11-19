@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { PublicKey, VersionedTransaction } from '@solana/web3.js';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { useVaultStore } from '@/stores/useVaultStore';
 import { VaultStatus, type Vault } from '@/types/vault';
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
@@ -21,6 +22,7 @@ export function useCancelReclaim() {
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
   const [isLoading, setIsLoading] = useState(false);
+  const queryClient = useQueryClient();
   const { fetchVaultById } = useVaultStore();
 
   const cancelReclaim = async ({ vault }: CancelReclaimParams) => {
@@ -116,8 +118,9 @@ export function useCancelReclaim() {
         { id: 'cancel-reclaim' }
       );
 
-      // Refresh vault data
+      // Refresh vault data and invalidate React Query cache
       await fetchVaultById(vault.id);
+      await queryClient.invalidateQueries({ queryKey: ['vault', vault.id] });
 
       return signature;
     } catch (error) {

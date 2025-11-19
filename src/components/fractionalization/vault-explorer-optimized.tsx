@@ -85,10 +85,16 @@ export function VaultExplorer() {
   }, [publicKey, vaults.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Memoize filtered vaults
-  const statusFilteredVaults = useMemo(() => 
-    statusFilter !== undefined ? getVaultsByStatus(statusFilter) : vaults,
-    [statusFilter, vaults, getVaultsByStatus]
-  );
+  const statusFilteredVaults = useMemo(() => {
+    const result = statusFilter !== undefined ? getVaultsByStatus(statusFilter) : vaults;
+    console.log('🔍 Filter Debug:', { 
+      statusFilter, 
+      totalVaults: vaults.length, 
+      filteredCount: result.length,
+      vaultStatuses: vaults.map(v => ({ id: v.id.slice(0, 8), status: v.status }))
+    });
+    return result;
+  }, [statusFilter, vaults, getVaultsByStatus]);
 
   const filteredVaults = useMemo(() => 
     statusFilteredVaults.filter((vault) => {
