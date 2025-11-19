@@ -17,6 +17,7 @@ import { CNFTImage } from './cnft-image';
 import { InitializeReclaimButton } from './initialize-reclaim-button';
 import { FinalizeReclaimButton } from './finalize-reclaim-button';
 import { CancelReclaimButton } from './cancel-reclaim-button';
+import { CircularProgress } from '@/components/ui/circular-progress';
 
 interface VaultDetailsProps {
   vaultId: string;
@@ -177,24 +178,37 @@ export function VaultDetails({ vaultId }: VaultDetailsProps) {
 
           {/* User Position */}
           {publicKey && userBalance && (
-            <Card>
+            <Card className="card-3d">
               <CardHeader>
-                <CardTitle>Your Position</CardTitle>
+                <CardTitle className="text-gradient">Your Position</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-6">
+                {/* Circular Progress */}
+                <div className="flex justify-center py-4">
+                  <CircularProgress 
+                    percentage={userSharePercentage}
+                    size={140}
+                    strokeWidth={10}
+                  />
+                </div>
+
+                {/* Stats */}
                 <div className="space-y-3">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between p-3 bg-muted/50 rounded-lg hover-lift">
                     <span className="text-muted-foreground">Your Balance</span>
-                    <span className="font-medium">{userBalance.toLocaleString()}</span>
+                    <span className="font-semibold text-gradient">{userBalance.toLocaleString()} tokens</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Your Share</span>
-                    <span className="font-medium">{userSharePercentage.toFixed(4)}%</span>
+                  <div className="flex justify-between p-3 bg-muted/50 rounded-lg hover-lift">
+                    <span className="text-muted-foreground">Total Supply</span>
+                    <span className="font-medium">{vault.totalSupply.toLocaleString()} tokens</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-center p-3 bg-muted/50 rounded-lg hover-lift">
                     <span className="text-muted-foreground">Reclaim Eligibility</span>
-                    <Badge variant={meetsReclaimThreshold ? "default" : "destructive"}>
-                      {meetsReclaimThreshold ? 'Eligible' : `Need ${vault.minReclaimPercentage}%`}
+                    <Badge 
+                      variant={meetsReclaimThreshold ? "default" : "destructive"}
+                      className="transition-all duration-300 hover:scale-110"
+                    >
+                      {meetsReclaimThreshold ? '✓ Eligible' : `Need ${vault.minReclaimPercentage}%`}
                     </Badge>
                   </div>
                 </div>

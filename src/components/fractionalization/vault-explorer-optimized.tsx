@@ -13,6 +13,8 @@ import { VaultStatus } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Loader2, Search, X, RefreshCw } from 'lucide-react';
+import { VaultCardSkeleton } from './vault-card-skeleton';
+import { StatsDashboard } from './stats-dashboard';
 
 const filterOptions = [
   { label: 'All', value: undefined },
@@ -162,6 +164,13 @@ export function VaultExplorer() {
           <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
           <span className="ml-3 text-muted-foreground font-medium">Loading vaults...</span>
         </div>
+        
+        {/* Skeleton loaders */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <VaultCardSkeleton key={i} />
+          ))}
+        </div>
       </div>
     );
   }
@@ -179,6 +188,10 @@ export function VaultExplorer() {
 
   return (
     <div className="space-y-6">
+      {/* Stats Dashboard */}
+      {!isLoadingPositions && vaults.length > 0 && (
+        <StatsDashboard />
+      )}
       {/* Search Bar and Refresh */}
       <div className="flex gap-3 items-center">
         <div className="relative flex-1 max-w-md group">

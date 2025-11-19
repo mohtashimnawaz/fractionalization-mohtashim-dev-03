@@ -118,30 +118,35 @@ export function VaultCard({ vault }: VaultCardProps) {
 
   return (
     <Card 
-      className="overflow-hidden hover:shadow-lg transition-shadow h-full flex flex-col cursor-pointer"
+      className="overflow-hidden card-3d h-full flex flex-col cursor-pointer group relative"
       onClick={handleViewDetails}
     >
+      {/* Glow effect on hover */}
+      <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 to-blue-600/0 group-hover:from-blue-500/10 group-hover:to-blue-600/5 transition-all duration-300 pointer-events-none rounded-lg" />
+      
       {/* NFT Image */}
-      <CardHeader className="p-0">
+      <CardHeader className="p-0 relative">
         <div className="relative aspect-square w-full overflow-hidden bg-muted">
           <CNFTImage
             imageUrl={vault.nftMetadata.image}
             name={vault.nftMetadata.name}
-            className="absolute inset-0"
+            className="absolute inset-0 group-hover:scale-110 transition-transform duration-500"
           />
+          {/* Gradient overlay on hover */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
         </div>
       </CardHeader>
 
-      <CardContent className="p-4 flex-1">
+      <CardContent className="p-4 flex-1 relative z-10">
         {/* Name and Status */}
         <div className="flex items-start justify-between mb-3">
-          <h3 className="font-semibold text-lg truncate flex-1 text-[oklch(0.4_0.2_250)]">
+          <h3 className="font-semibold text-lg truncate flex-1 text-gradient group-hover:scale-105 transition-transform duration-300">
             {vault.nftMetadata.name}
           </h3>
-          <Badge className={statusColors[vault.status]} variant="secondary">
+          <Badge className={`${statusColors[vault.status]} transition-all duration-300 group-hover:scale-110`} variant="secondary">
             {vault.status === VaultStatus.ReclaimInitiated ? (
               <div className="flex items-center gap-1">
-                <Clock className="h-3 w-3" />
+                <Clock className="h-3 w-3 animate-pulse" />
                 {escrowEnded ? 'Ready to Finalize' : formatTimeRemaining(timeRemaining)}
               </div>
             ) : (
